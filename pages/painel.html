@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GVQ - Painel do Comprador</title>
+    <title>GVQ - Painel do Originador</title>
     <meta name="theme-color" content="#12004F">
     <link rel="icon" type="image/png" href="../assets/img/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -95,11 +95,11 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_cidade_destino">Cidade</label>
-                                    <input type="text" id="rom_cidade_destino" class="campo-auto" readonly placeholder="—">
+                                    <input type="text" id="rom_cidade_destino" class="campo-auto" readonly placeholder="—" required>
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_uf_destino">Estado</label>
-                                    <input type="text" id="rom_uf_destino" class="campo-auto" readonly placeholder="—">
+                                    <input type="text" id="rom_uf_destino" class="campo-auto" readonly placeholder="—" required>
                                 </div>
                             </div>
                         </section>
@@ -130,19 +130,19 @@
                                     </div>
                                     <div class="form-group">
                                         <label for="pec_doc">CPF/CNPJ</label>
-                                        <input type="text" id="pec_doc" class="campo-auto" readonly placeholder="—">
+                                        <input type="text" id="pec_doc" class="campo-auto" readonly placeholder="—" required>
                                     </div>
                                     <div class="form-group col-2 encolhe">
                                         <label for="pec_banco">Banco</label>
-                                        <input type="text" id="pec_banco" class="campo-auto" readonly placeholder="—">
+                                        <input type="text" id="pec_banco" class="campo-auto" readonly placeholder="—" required>
                                     </div>
                                     <div class="form-group">
                                         <label for="pec_agencia">Agência</label>
-                                        <input type="text" id="pec_agencia" class="campo-auto" readonly placeholder="—">
+                                        <input type="text" id="pec_agencia" class="campo-auto" readonly placeholder="—" required>
                                     </div>
                                     <div class="form-group">
                                         <label for="pec_conta">Conta</label>
-                                        <input type="text" id="pec_conta" class="campo-auto" readonly placeholder="—">
+                                        <input type="text" id="pec_conta" class="campo-auto" readonly placeholder="—" required>
                                     </div>
                                 </div>
                             </div>
@@ -167,11 +167,11 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_data_pag">Data do pagamento</label>
-                                    <input type="date" id="rom_data_pag">
+                                    <input type="date" id="rom_data_pag" required>
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_sexo">Sexo</label>
-                                    <select id="rom_sexo">
+                                    <select id="rom_sexo" required>
                                         <option value="">Selecione...</option>
                                         <option value="Macho">Macho</option>
                                         <option value="Fêmea">Fêmea</option>
@@ -179,30 +179,40 @@
                                 </div>
                                 <div class="form-group campo-raca">
                                     <label for="rom_raca">Raça</label>
-                                    <select id="rom_raca" onchange="verificarRacaOutra()">
+                                    <select id="rom_raca" onchange="verificarRacaOutra()" required>
                                         <option value="">Selecione...</option>
                                         <option value="Brangus">Brangus</option>
                                         <option value="Nelore">Nelore</option>
                                         <option value="Cruzado">Cruzado</option>
+                                        <option value="F1 Angus">F1 Angus</option>
+                                        <option value="Europeu">Europeu</option>
                                         <option value="outro">Outra</option>
                                     </select>
                                     <input type="text" id="rom_raca_outra" class="campo-extra" placeholder="Qual?" aria-label="Outra raça" style="display: none;">
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_cabecas">Cabeças</label>
-                                    <input type="number" id="rom_cabecas" placeholder="0" required oninput="calcularValorTotal()">
+                                    <input type="number" id="rom_cabecas" min="1" step="1" placeholder="0" required oninput="calcularValorTotal()">
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_peso_total">Peso total (kg)</label>
-                                    <input type="number" step="0.01" id="rom_peso_total" placeholder="0,00" required oninput="calcularValorTotal()">
+                                    <input type="number" step="0.01" id="rom_peso_total" min="0.01" placeholder="0,00" required oninput="calcularValorTotal()">
+                                </div>
+                                <div class="form-group">
+                                    <label for="rom_peso_medio">Peso médio (kg)</label>
+                                    <input type="number" step="0.01" id="rom_peso_medio" class="campo-auto" readonly required placeholder="0,00">
+                                </div>
+                                <div class="form-group">
+                                    <label for="rom_tipo_pesagem">Tipo de pesagem</label>
+                                    <select id="rom_tipo_pesagem" required onchange="ajustarTipoPesagem()"><option value="balancao">Balanção</option><option value="individual">Individual</option></select>
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_preco">Preço</label>
-                                    <input type="number" step="0.01" id="rom_preco" placeholder="0,00" oninput="calcularValorTotal()">
+                                    <input type="number" step="0.01" id="rom_preco" min="0.01" placeholder="0,00" oninput="calcularValorTotal()" required>
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_unidade_preco">Unidade</label>
-                                    <select id="rom_unidade_preco" onchange="calcularValorTotal()"><option value="Por Kg">Por Kg</option><option value="Por Arroba">Por Arroba</option><option value="Por Cabeça">Por Cabeça</option></select>
+                                    <select id="rom_unidade_preco" onchange="calcularValorTotal()" required><option value="Por Kg">Por Kg</option><option value="Por Arroba">Por Arroba</option><option value="Por Cabeça">Por Cabeça</option></select>
                                 </div>
                             </div>
 
@@ -210,7 +220,7 @@
                                 <div class="total-destaque-texto">
                                     <label for="rom_valor_total">Valor total</label>
                                 </div>
-                                <input type="text" id="rom_valor_total" class="campo-total" readonly placeholder="R$ 0,00">
+                                <input type="text" id="rom_valor_total" class="campo-total" readonly placeholder="R$ 0,00" required>
                             </div>
                         </section>
 
@@ -227,11 +237,11 @@
                             <div class="form-grid form-grid-4">
                                 <div class="form-group col-2">
                                     <label for="rom_corretor">Corretor</label>
-                                    <input type="text" id="rom_corretor">
+                                    <input type="text" id="rom_corretor" placeholder="Sem corretor, se não houver" required>
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_tipo_comissao">Tipo</label>
-                                    <select id="rom_tipo_comissao" onchange="calcularComissao()">
+                                    <select id="rom_tipo_comissao" onchange="calcularComissao()" required>
                                         <option value="Nenhuma">Nenhuma</option>
                                         <option value="Fixo">Fixo</option>
                                         <option value="Por Cabeça">Por Cabeça</option>
@@ -240,7 +250,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_valor_comissao">Valor (R$ ou %)</label>
-                                    <input type="number" step="0.01" id="rom_valor_comissao" placeholder="0,00" oninput="calcularComissao()">
+                                    <input type="number" step="0.01" id="rom_valor_comissao" min="0" value="0" placeholder="0,00" oninput="calcularComissao()" required>
                                 </div>
                             </div>
 
@@ -248,7 +258,7 @@
                                 <div class="total-destaque-texto">
                                     <label for="rom_total_comissao">Total da comissão</label>
                                 </div>
-                                <input type="text" id="rom_total_comissao" class="campo-total" readonly placeholder="R$ 0,00">
+                                <input type="text" id="rom_total_comissao" class="campo-total" readonly placeholder="R$ 0,00" required>
                             </div>
                         </section>
 

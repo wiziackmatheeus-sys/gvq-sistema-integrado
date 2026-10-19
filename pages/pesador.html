@@ -57,7 +57,7 @@
                                 </div>
                             </div>
 
-                            <div class="form-group"><label for="rom_comprador">Comprador responsável</label><select id="rom_comprador" required><option value="">Carregando compradores...</option></select></div>
+                            <div class="form-group"><label for="rom_originador">Originador responsável</label><input id="rom_originador" class="campo-auto" type="text" readonly required></div>
                             <h3 class="subtitulo-secao"><svg class="icon icon-sm"><use href="../assets/img/icones.svg#caminhao"></use></svg>Origem</h3>
                             <div class="form-grid form-grid-4">
                                 <div class="form-group col-2 encolhe">
@@ -84,11 +84,11 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_cidade_destino">Cidade</label>
-                                    <input type="text" id="rom_cidade_destino" class="campo-auto" readonly placeholder="—">
+                                    <input type="text" id="rom_cidade_destino" class="campo-auto" readonly placeholder="—" required>
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_uf_destino">Estado</label>
-                                    <input type="text" id="rom_uf_destino" class="campo-auto" readonly placeholder="—">
+                                    <input type="text" id="rom_uf_destino" class="campo-auto" readonly placeholder="—" required>
                                 </div>
                             </div>
                         </section>
@@ -119,19 +119,19 @@
                                     </div>
                                     <div class="form-group">
                                         <label for="pec_doc">CPF/CNPJ</label>
-                                        <input type="text" id="pec_doc" class="campo-auto" readonly placeholder="—">
+                                        <input type="text" id="pec_doc" class="campo-auto" readonly placeholder="—" required>
                                     </div>
                                     <div class="form-group col-2 encolhe">
                                         <label for="pec_banco">Banco</label>
-                                        <input type="text" id="pec_banco" class="campo-auto" readonly placeholder="—">
+                                        <input type="text" id="pec_banco" class="campo-auto" readonly placeholder="—" required>
                                     </div>
                                     <div class="form-group">
                                         <label for="pec_agencia">Agência</label>
-                                        <input type="text" id="pec_agencia" class="campo-auto" readonly placeholder="—">
+                                        <input type="text" id="pec_agencia" class="campo-auto" readonly placeholder="—" required>
                                     </div>
                                     <div class="form-group">
                                         <label for="pec_conta">Conta</label>
-                                        <input type="text" id="pec_conta" class="campo-auto" readonly placeholder="—">
+                                        <input type="text" id="pec_conta" class="campo-auto" readonly placeholder="—" required>
                                     </div>
                                 </div>
                             </div>
@@ -156,7 +156,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_data_pag">Data do pagamento</label>
-                                    <input type="date" id="rom_data_pag">
+                                    <input type="date" id="rom_data_pag" required>
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_sexo">Sexo</label>
@@ -173,18 +173,29 @@
                                         <option value="Brangus">Brangus</option>
                                         <option value="Nelore">Nelore</option>
                                         <option value="Cruzado">Cruzado</option>
+                                        <option value="F1 Angus">F1 Angus</option>
+                                        <option value="Europeu">Europeu</option>
                                         <option value="outro">Outra</option>
                                     </select>
                                     <input type="text" id="rom_raca_outra" class="campo-extra" placeholder="Qual?" aria-label="Outra raça" style="display: none;">
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_cabecas">Cabeças</label>
-                                    <input type="number" id="rom_cabecas" readonly placeholder="0" required oninput="calcularValorTotal()">
+                                    <input type="number" id="rom_cabecas" min="1" step="1" placeholder="0" required oninput="calcularValorTotal()">
                                 </div>
                                 <div class="form-group">
                                     <label for="rom_peso_total">Peso total (kg)</label>
-                                    <input type="number" step="0.01" id="rom_peso_total" readonly placeholder="0,00" required oninput="calcularValorTotal()">
+                                    <input type="number" step="0.01" id="rom_peso_total" min="0.01" placeholder="0,00" required oninput="calcularValorTotal()">
                                 </div>
+                                <div class="form-group">
+                                    <label for="rom_peso_medio">Peso médio (kg)</label>
+                                    <input type="number" step="0.01" id="rom_peso_medio" class="campo-auto" readonly required placeholder="0,00">
+                                </div>
+                                <div class="form-group">
+                                    <label for="rom_tipo_pesagem">Tipo de pesagem</label>
+                                    <select id="rom_tipo_pesagem" required onchange="ajustarTipoPesagem()"><option value="balancao">Balanção</option><option value="individual">Individual</option></select>
+                                </div>
+
 
 
                             </div>
@@ -221,10 +232,22 @@
                         </section>
 
                         <div class="barra-acao">
-                            <button type="submit" id="btn-registrar" class="btn btn-primario btn-lg btn-bloco">Enviar ao comprador</button>
+                            <button type="submit" id="btn-registrar" class="btn btn-primario btn-lg btn-bloco">Enviar ao originador</button>
                         </div>
                     </form>
                 </div>
+
+                <section id="tela-documentos" class="tela" style="display: none;">
+                    <header class="pagina-cabecalho"><div><h1 class="pagina-titulo">Complementar documentos</h1></div><div class="pagina-acoes"><button class="btn btn-fantasma" type="button" onclick="mostrarTelaHistorico()">Voltar</button></div></header>
+                    <form id="form-complementos">
+                        <section class="card">
+                            <div class="card-cabecalho"><div class="card-cabecalho-texto"><div><h2 id="complemento-pecuarista" class="card-titulo"></h2></div></div></div>
+                            <div id="documentos-existentes" class="lista-anexos"></div>
+                            <div class="form-group campo-obs"><label for="input_complementos">Anexos</label><div class="upload-area"><span class="upload-icone"><svg class="icon icon-lg"><use href="../assets/img/icones.svg#upload"></use></svg></span><span class="upload-texto"><strong>Adicionar arquivos</strong></span><input id="input_complementos" type="file" multiple onchange="listarComplementos()"></div><div id="lista-complementos" class="lista-anexos"></div></div>
+                        </section>
+                        <div class="barra-acao"><button id="btn-complementar" type="submit" class="btn btn-primario btn-lg btn-bloco">Enviar para revalidação</button></div>
+                    </form>
+                </section>
 
                 <!-- ============ Tela 2: pesagem individual ============ -->
                 <section id="tela-pesagem" class="tela" style="display: none;">
@@ -285,8 +308,8 @@
 
                         <div class="tabela-wrap tabela-lista">
                             <table class="tabela-historico">
-                                <thead><tr><th>Data</th><th>Pecuarista</th><th>Local</th><th>Destino</th><th class="col-num">Cabeças / peso</th><th>Situação</th></tr></thead>
-                                <tbody id="tbody-historico"><tr><td colspan="6" class="celula-vazia">Conectando ao banco de dados...</td></tr></tbody>
+                                <thead><tr><th>Data</th><th>Pecuarista</th><th>Local</th><th>Destino</th><th class="col-num">Cabeças / peso</th><th>Situação</th><th>Ação</th></tr></thead>
+                                <tbody id="tbody-historico"><tr><td colspan="7" class="celula-vazia">Conectando ao banco de dados...</td></tr></tbody>
                             </table>
                         </div>
                         <div class="tabela-rodape" aria-hidden="true">

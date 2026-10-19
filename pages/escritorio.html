@@ -22,6 +22,7 @@
                 <button type="button" id="btn-tab-romaneios" class="nav-item aba-menu ativa" aria-current="page" onclick="mostrarTela('romaneios')"><svg class="icon"><use href="../assets/img/icones.svg#romaneio"></use></svg><span>Compras</span></button>
                 <button type="button" id="btn-tab-pecuaristas" class="nav-item aba-menu" onclick="mostrarTela('pecuaristas')"><svg class="icon"><use href="../assets/img/icones.svg#pecuaristas"></use></svg><span>Pecuaristas</span></button>
                 <button type="button" id="btn-tab-destinos" class="nav-item aba-menu" onclick="mostrarTela('destinos')"><svg class="icon"><use href="../assets/img/icones.svg#destino"></use></svg><span>Destinos</span></button>
+                <button type="button" id="btn-tab-usuarios" class="nav-item aba-menu" onclick="mostrarTela('usuarios')"><svg class="icon"><use href="../assets/img/icones.svg#usuario"></use></svg><span>Pesadores</span></button>
             </nav>
             <div class="sidebar-rodape">
                 <div class="usuario">
@@ -58,7 +59,7 @@
                                             <th class="col-chk"><input type="checkbox" id="chkAll" class="chk-todos" title="Selecionar todos" aria-label="Selecionar todos os registros" onclick="document.querySelectorAll('.chk-export').forEach(c => c.checked = this.checked)"></th>
                                             <th>Data</th>
                                             <th>Pecuarista</th>
-                                            <th>Comprador</th>
+                                            <th>Originador</th>
                                             <th class="col-num">Animais</th>
                                             <th class="col-num">Peso (kg)</th>
                                             <th class="col-num">Preço</th>
@@ -84,6 +85,11 @@
                     </div>
                 </section>
 
+                <section id="tela-usuarios" class="tela" style="display: none;" aria-labelledby="titulo-usuarios">
+                    <header class="pagina-cabecalho"><div><h1 class="pagina-titulo" id="titulo-usuarios">Pesadores</h1></div></header>
+                    <section class="card card-tabela card-lista"><div class="tabela-wrap tabela-lista"><table><thead><tr><th>Pesador</th><th>Situação</th><th>Originador responsável</th><th>Ação</th></tr></thead><tbody id="tbody-usuarios"><tr><td colspan="4" class="celula-vazia">Carregando solicitações...</td></tr></tbody></table></div></section>
+                </section>
+
                 <!-- Pecuaristas -->
                 <section id="tela-pecuaristas" class="tela" style="display: none;" aria-labelledby="titulo-pecuaristas">
                     <header class="pagina-cabecalho">
@@ -105,19 +111,19 @@
                         <div class="form-grid form-grid-4">
                             <div class="form-group">
                                 <label for="novo_pec_nome">Nome</label>
-                                <input type="text" id="novo_pec_nome">
+                                <input type="text" id="novo_pec_nome" required>
                             </div>
                             <div class="form-group">
                                 <label for="novo_pec_doc">CPF / CNPJ</label>
-                                <input type="text" id="novo_pec_doc" placeholder="000.000.000-00">
+                                <input type="text" id="novo_pec_doc" placeholder="000.000.000-00" required>
                             </div>
                             <div class="form-group">
                                 <label for="novo_pec_uf">Estado</label>
-                                <select id="novo_pec_uf" onchange="carregarCidades('novo_pec_uf', 'lista_cidades_pec', 'novo_pec_cidade')"><option value="">Selecione...</option></select>
+                                <select id="novo_pec_uf" onchange="carregarCidades('novo_pec_uf', 'lista_cidades_pec', 'novo_pec_cidade')" required><option value="">Selecione...</option></select>
                             </div>
                             <div class="form-group">
                                 <label for="novo_pec_cidade">Cidade</label>
-                                <input type="text" id="novo_pec_cidade" list="lista_cidades_pec" onchange="validarSelecaoDaLista(this, 'lista_cidades_pec')" placeholder="Selecione o estado primeiro" autocomplete="off">
+                                <input type="text" id="novo_pec_cidade" list="lista_cidades_pec" onchange="validarSelecaoDaLista(this, 'lista_cidades_pec')" placeholder="Selecione o estado primeiro" autocomplete="off" required>
                                 <datalist id="lista_cidades_pec"></datalist>
                             </div>
                         </div>
@@ -127,17 +133,17 @@
                                 <label for="novo_pec_banco">Banco</label>
                                 <div class="campo-icone">
                                     <svg class="icon"><use href="../assets/img/icones.svg#banco"></use></svg>
-                                    <input type="text" id="novo_pec_banco" list="lista_bancos" placeholder="Digite o nome do banco..." autocomplete="off">
+                                    <input type="text" id="novo_pec_banco" list="lista_bancos" placeholder="Digite o nome do banco..." autocomplete="off" required>
                                 </div>
                                 <datalist id="lista_bancos"></datalist>
                             </div>
                             <div class="form-group">
                                 <label for="novo_pec_agencia">Agência</label>
-                                <input type="text" id="novo_pec_agencia" placeholder="0000">
+                                <input type="text" id="novo_pec_agencia" placeholder="0000" required>
                             </div>
                             <div class="form-group">
                                 <label for="novo_pec_conta">Conta</label>
-                                <input type="text" id="novo_pec_conta" placeholder="00000-0">
+                                <input type="text" id="novo_pec_conta" placeholder="00000-0" required>
                             </div>
                         </div>
 
@@ -199,15 +205,15 @@
                         <div class="form-grid form-grid-3">
                             <div class="form-group ocupa-2">
                                 <label for="novo_dest_nome">Nome</label>
-                                <input type="text" id="novo_dest_nome" placeholder="Digite o nome da fazenda...">
+                                <input type="text" id="novo_dest_nome" placeholder="Digite o nome da fazenda..." required>
                             </div>
                             <div class="form-group">
                                 <label for="novo_dest_uf">Estado</label>
-                                <select id="novo_dest_uf" onchange="carregarCidades('novo_dest_uf', 'lista_cidades_dest', 'novo_dest_cidade')"><option value="">Selecione...</option></select>
+                                <select id="novo_dest_uf" onchange="carregarCidades('novo_dest_uf', 'lista_cidades_dest', 'novo_dest_cidade')" required><option value="">Selecione...</option></select>
                             </div>
                             <div class="form-group">
                                 <label for="novo_dest_cidade">Cidade</label>
-                                <input type="text" id="novo_dest_cidade" list="lista_cidades_dest" onchange="validarSelecaoDaLista(this, 'lista_cidades_dest')" placeholder="Selecione o estado primeiro" autocomplete="off">
+                                <input type="text" id="novo_dest_cidade" list="lista_cidades_dest" onchange="validarSelecaoDaLista(this, 'lista_cidades_dest')" placeholder="Selecione o estado primeiro" autocomplete="off" required>
                                 <datalist id="lista_cidades_dest"></datalist>
                             </div>
                         </div>
@@ -252,3 +258,4 @@
     <script type="module" src="../js/escritorio.js"></script>
 </body>
 </html>
+

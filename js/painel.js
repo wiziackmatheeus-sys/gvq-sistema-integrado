@@ -1,8 +1,9 @@
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { collection, addDoc, onSnapshot, query, where, orderBy, serverTimestamp, doc, runTransaction, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { collection, addDoc, onSnapshot, query, where, orderBy, serverTimestamp, doc, runTransaction, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
+import { enviarAnexos, limparUploads, unirAnexos } from './anexos.js';
 import { exigirPerfil } from "./auth-guard.js";
-import { dadosPesagem, validarPesagem, validarNegociacao, escapeHtml } from "./fluxo-compra.js";
+import { dadosPesagem, validarPesagem, validarNegociacao, pesoMedio, escapeHtml } from "./fluxo-compra.js";
 
 let pecuaristasGlobais = [];
 let destinosGlobais = [];
@@ -13,18 +14,19 @@ let nomeCompradorLogado = "";
 let arquivosFilaGlobais = [];
 const ehPesador = document.body.dataset.perfil === 'pesador';
 let usuarioAtual = null;
-let compradoresDisponiveis = [];
+let anexosLinksExistentes = [];
+let complementoId = null;
 let pesagensPendentes = [];
 let pesagemEmConferencia = null;
 let pesagemOriginal = null;
 let anexosExistentes = [];
-const textoEnviar = ehPesador ? 'Enviar ao comprador' : 'Validar e enviar ao escritório';
+const textoEnviar = ehPesador ? 'Enviar ao originador' : 'Validar e enviar ao escritório';
 const valor = id => document.getElementById(id)?.value || '';
 const erroSincronizacao = error => alert('Não foi possível carregar os dados: ' + error.message);
 
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        usuarioAtual = await exigirPerfil(user, [ehPesador ? 'pesador' : 'comprador']);
+        usuarioAtual = await exigirPerfil(user, [ehPesador ? 'pesador' : 'originador']);
         if (!usuarioAtual) return;
         nomeCompradorLogado = usuarioAtual.nome;
         document.getElementById('nome-usuario').innerText = 'Olá, ' + nomeCompradorLogado.split(' ')[0];
@@ -46,7 +48,7 @@ onAuthStateChanged(auth, async (user) => {
         puxarPecuaristasDaNuvem();
         puxarDestinosDaNuvem(); 
         puxarHistoricoDaNuvem();
-        if (ehPesador) puxarCompradores();
+        if (ehPesador) document.getElementById('rom_originador').value = usuarioAtual.comprador;
         else { puxarPendentes(); window.mostrarPendentes(); }
     } else {
         window.location.href = '../index.html';
@@ -178,7 +180,10 @@ function renderizarFilaArquivos() {
     anexosExistentes.forEach(nome => {
         const item = document.createElement('div'); item.className = 'item-anexo';
         const texto = document.createElement('span'); texto.className = 'item-anexo-texto';
-        texto.textContent = nome; item.appendChild(texto); divUi.appendChild(item);
+        texto.textContent = nome; item.appendChild(texto);
+        const anexo = anexosLinksExistentes.find(a => a.nomeArquivo === nome);
+        if (anexo) { const link = criarLinkAnexo(anexo); if (link) item.appendChild(link); }
+        divUi.appendChild(item);
     });
     arquivosFilaGlobais.forEach((file, index) => {
         let tamanhoMB = (file.size / (1024 * 1024)).toFixed(2);
@@ -228,14 +233,12 @@ window.calcularComissao = function() {
     }
 
     let campoTotal = document.getElementById('rom_total_comissao');
-    if (totalComissao > 0) {
-        campoTotal.value = totalComissao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    } else {
-        campoTotal.value = '';
-    }
+    campoTotal.value = totalComissao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 window.calcularValorTotal = function() {
+    const media = pesoMedio(valor('rom_cabecas'), valor('rom_peso_total'));
+    document.getElementById('rom_peso_medio').value = media === null ? '' : media.toFixed(2);
     if (ehPesador) return;
     let preco = parseFloat(document.getElementById('rom_preco').value) || 0;
     let unidade = document.getElementById('rom_unidade_preco').value;
@@ -260,7 +263,7 @@ window.calcularValorTotal = function() {
 function marcarMenuAtivo(idItem) { document.querySelectorAll('.nav-item').forEach(item => { item.classList.toggle('ativa', item.id === idItem); if (item.id === idItem) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current'); }); }
 
 function abrirTela(id, menu) {
-    ['tela-principal', 'tela-pesagem', 'tela-historico', 'tela-pendentes'].forEach(tela => {
+    ['tela-principal', 'tela-pesagem', 'tela-historico', 'tela-pendentes', 'tela-documentos'].forEach(tela => {
         const el = document.getElementById(tela);
         if (el) el.style.display = tela === id ? 'block' : 'none';
     });
@@ -314,15 +317,29 @@ window.salvarPesosGrid = function() {
         }
     }
     document.getElementById('grid_lbl_cab').innerText = cabecas; document.getElementById('grid_lbl_peso').innerText = peso.toFixed(2);
-    if(cabecas > 0) { document.getElementById('rom_cabecas').value = cabecas; document.getElementById('rom_peso_total').value = peso.toFixed(2); window.calcularValorTotal(); }
+    document.getElementById('rom_tipo_pesagem').value = cabecas > 0 ? 'individual' : 'balancao';
+    document.getElementById('rom_cabecas').value = cabecas || '';
+    document.getElementById('rom_peso_total').value = cabecas > 0 ? peso.toFixed(2) : '';
+    window.calcularValorTotal();
     window.voltarTelaPrincipal();
+}
+
+window.ajustarTipoPesagem = function() {
+    if (valor('rom_tipo_pesagem') === 'balancao') {
+        pesosAdicionadosGlobais = [];
+        gerarGrelhaPesosInit();
+        window.calcularTotaisGrid();
+    }
+    window.calcularValorTotal();
 }
 
 function lerFormulario() {
     return {
         estado: valor('rom_uf'), cidade: valor('rom_cidade'),
         fazendaDestino: valor('rom_fazenda_destino'), cidadeDestino: valor('rom_cidade_destino'), ufDestino: valor('rom_uf_destino'),
-        pecuarista: valor('pec_nome'), dataCompra: valor('rom_data_compra'), dataPagamento: valor('rom_data_pag'),
+        pecuarista: valor('pec_nome'), pecuaristaDocumento: valor('pec_doc'), pecuaristaBanco: valor('pec_banco'),
+        pecuaristaAgencia: valor('pec_agencia'), pecuaristaConta: valor('pec_conta'),
+        pesoMedio: valor('rom_peso_medio'), tipoPesagem: valor('rom_tipo_pesagem'), dataCompra: valor('rom_data_compra'), dataPagamento: valor('rom_data_pag'),
         cabecas: valor('rom_cabecas'), pesoTotal: valor('rom_peso_total'), sexo: valor('rom_sexo'),
         raca: valor('rom_raca') === 'outro' ? valor('rom_raca_outra').trim() : valor('rom_raca'),
         pesosIndividuais: [...pesosAdicionadosGlobais], observacoes: valor('rom_obs'),
@@ -338,6 +355,8 @@ function limparFormulario() {
     pesosAdicionadosGlobais = [];
     arquivosFilaGlobais = [];
     anexosExistentes = [];
+    anexosLinksExistentes = [];
+    if (ehPesador) document.getElementById('rom_originador').value = usuarioAtual.comprador;
     pesagemEmConferencia = null;
     pesagemOriginal = null;
     renderizarFilaArquivos();
@@ -351,74 +370,67 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
     e.preventDefault();
     if (!usuarioAtual) return;
     const btn = document.getElementById('btn-registrar');
-    btn.innerText = 'Salvando registro no banco...';
-    btn.disabled = true;
+    btn.innerText = 'Salvando registro no banco...'; btn.disabled = true;
+    let enviados = [];
+    let gravado = false;
     try {
         window.calcularValorTotal();
         const dados = lerFormulario();
         validarPesagem(dados);
         if (!pecuaristasGlobais.some(p => p.nome === dados.pecuarista && p.nome === valor('rom_busca_pec')) ||
-            !destinosGlobais.some(d => d.nome === dados.fazendaDestino)) {
+            !destinosGlobais.some(d => d.nome === dados.fazendaDestino && d.cidade === dados.cidadeDestino && d.estado === dados.ufDestino)) {
             throw new Error('Selecione um pecuarista e um destino válidos.');
         }
         if (ehPesador) {
-            const comprador = compradoresDisponiveis.find(c => c.uid === valor('rom_comprador'));
-            if (!comprador) throw new Error('Selecione o comprador responsável.');
-            await addDoc(collection(db, 'pesagens'), {
-                ...dadosPesagem(dados), compradorUid: comprador.uid, comprador: comprador.nome,
+            // Conferir novamente o vínculo antes de enviar; não confiar no perfil carregado ao entrar.
+            const perfil = await getDoc(doc(db, 'usuarios', usuarioAtual.uid));
+            const responsavel = perfil.data();
+            if (!responsavel?.aprovado || !responsavel.compradorUid) throw new Error('Aguarde o escritório aprovar seu cadastro e designar o originador.');
+            const origem = doc(collection(db, 'pesagens'));
+            enviados = await enviarAnexos(arquivosFilaGlobais, { uid: usuarioAtual.uid, pesagemId: origem.id });
+            await setDoc(origem, {
+                ...dadosPesagem(dados), anexosLinks: enviados, anexosCaminhos: enviados.map(a => a.caminho),
+                compradorUid: responsavel.compradorUid, comprador: responsavel.comprador,
                 pesadorUid: usuarioAtual.uid, pesador: usuarioAtual.nome,
-                status: 'aguardando_comprador', timestamp: serverTimestamp()
+                status: 'aguardando_comprador', revisao: 1, timestamp: serverTimestamp()
             });
-            alert('Pesagem enviada ao comprador responsável!');
+            gravado = true;
+            usuarioAtual = { ...usuarioAtual, ...responsavel };
+            alert('Pesagem enviada ao originador responsável!');
         } else {
             if (!pesagemEmConferencia) throw new Error('Selecione uma compra pendente.');
             validarNegociacao(dados);
             const origem = doc(db, 'pesagens', pesagemEmConferencia);
             const destino = doc(db, 'romaneios', pesagemEmConferencia);
+            enviados = await enviarAnexos(arquivosFilaGlobais, { uid: usuarioAtual.uid, pesagemId: origem.id, financeiro: true });
             await runTransaction(db, async transacao => {
                 const snap = await transacao.get(origem);
-                if (!snap.exists() || snap.data().compradorUid !== usuarioAtual.uid ||
-                    snap.data().status !== 'aguardando_comprador') {
+                if (!snap.exists() || snap.data().compradorUid !== usuarioAtual.uid || snap.data().status !== 'aguardando_comprador') {
                     throw new Error('Esta compra já foi validada ou não pertence a você.');
                 }
-                if (JSON.stringify(snap.data()) !== JSON.stringify(pesagemOriginal)) {
-                    throw new Error('A pesagem foi alterada. Abra a compra novamente antes de validar.');
-                }
+                if (JSON.stringify(snap.data()) !== JSON.stringify(pesagemOriginal)) throw new Error('A pesagem foi alterada. Abra a compra novamente antes de validar.');
                 const pesagem = snap.data();
                 transacao.set(destino, {
-                    ...dados, compradorUid: usuarioAtual.uid, comprador: usuarioAtual.nome,
+                    ...dados, anexosLinks: unirAnexos(anexosLinksExistentes, enviados),
+                    anexosCaminhos: unirAnexos(anexosLinksExistentes, enviados).map(a => a.caminho).filter(Boolean),
+                    compradorUid: usuarioAtual.uid, comprador: usuarioAtual.nome,
                     pesadorUid: pesagem.pesadorUid, pesador: pesagem.pesador, pesagemId: snap.id,
-                    status: 'enviado_escritorio', timestamp: serverTimestamp(), validadoEm: serverTimestamp(),
-                    ...(pesagem.anexosLinks ? { anexosLinks: pesagem.anexosLinks } : {})
+                    revisaoValidada: pesagem.revisao || 1,
+                    status: 'enviado_escritorio', timestamp: serverTimestamp(), validadoEm: serverTimestamp()
                 });
-                // Notas e anexos da negociação ficam somente no documento financeiro.
                 transacao.update(origem, { status: 'enviado_escritorio', validadoEm: serverTimestamp() });
             });
+            gravado = true;
             alert('Compra validada e enviada ao escritório!');
         }
         limparFormulario();
         if (!ehPesador) window.mostrarPendentes();
         window.scrollTo(0, 0);
     } catch(error) {
+        if (!gravado) await limparUploads(enviados);
         alert('Erro ao salvar: ' + error.message);
-    } finally {
-        btn.innerText = textoEnviar;
-        btn.disabled = false;
-    }
+    } finally { btn.innerText = textoEnviar; btn.disabled = false; }
 });
-
-function puxarCompradores() {
-    const q = query(collection(db, 'usuarios'), where('perfil', '==', 'comprador'), where('aprovado', '==', true));
-    onSnapshot(q, snapshot => {
-        compradoresDisponiveis = snapshot.docs.map(d => ({ ...d.data(), uid: d.id }));
-        compradoresDisponiveis.sort((a, b) => a.nome.localeCompare(b.nome));
-        const select = document.getElementById('rom_comprador');
-        const anterior = select.value;
-        select.replaceChildren(new Option(compradoresDisponiveis.length ? 'Selecione...' : 'Nenhum comprador disponível', ''));
-        compradoresDisponiveis.forEach(c => select.add(new Option(c.nome, c.uid)));
-        select.value = anterior;
-    }, erroSincronizacao);
-}
 
 function puxarPendentes() {
     const q = query(collection(db, 'pesagens'), where('compradorUid', '==', usuarioAtual.uid));
@@ -439,7 +451,7 @@ function puxarPendentes() {
             });
             const td = document.createElement('td');
             const btn = document.createElement('button');
-            btn.type = 'button'; btn.className = 'btn btn-secundario btn-sm'; btn.textContent = 'Conferir';
+            btn.type = 'button'; btn.className = 'btn btn-secundario btn-sm'; btn.textContent = p.validadoEm ? 'Revalidar' : 'Conferir';
             btn.onclick = () => abrirConferencia(p.id);
             td.appendChild(btn); tr.appendChild(td); tbody.appendChild(tr);
         });
@@ -454,27 +466,37 @@ async function abrirConferencia(id) {
         }
         limparFormulario();
         const p = snap.data();
+        let anterior = {};
+        if (p.validadoEm) {
+            const financeiro = await getDoc(doc(db, 'romaneios', id));
+            if (financeiro.exists()) anterior = financeiro.data();
+        }
+        const formulario = { ...p, ...anterior };
         pesagemEmConferencia = id;
         pesagemOriginal = p;
         const campos = { rom_uf: 'estado', rom_cidade: 'cidade', rom_fazenda_destino: 'fazendaDestino',
             rom_cidade_destino: 'cidadeDestino', rom_uf_destino: 'ufDestino', rom_busca_pec: 'pecuarista', pec_nome: 'pecuarista',
             rom_data_compra: 'dataCompra', rom_data_pag: 'dataPagamento', rom_cabecas: 'cabecas', rom_peso_total: 'pesoTotal',
-            rom_sexo: 'sexo', rom_obs: 'observacoes' };
+            rom_sexo: 'sexo', rom_obs: 'observacoes', rom_preco: 'precoUnitario', rom_unidade_preco: 'unidadePreco',
+            rom_corretor: 'corretor', rom_tipo_comissao: 'tipoComissao', rom_valor_comissao: 'valorComissao' };
         // A lista de estados pode ainda estar chegando da API.
         if (![...document.getElementById('rom_uf').options].some(o => o.value === p.estado)) {
             document.getElementById('rom_uf').add(new Option(p.estado, p.estado));
         }
-        Object.entries(campos).forEach(([input, campo]) => { document.getElementById(input).value = p[campo] || ''; });
-        cidadesEstadoGlobais = [p.cidade];
+        Object.entries(campos).forEach(([input, campo]) => { if (formulario[campo] !== undefined) document.getElementById(input).value = formulario[campo]; });
+        cidadesEstadoGlobais = [formulario.cidade];
         window.preencherPecuarista();
-        document.getElementById('rom_raca').value = ['Brangus', 'Nelore', 'Cruzado'].includes(p.raca) ? p.raca : 'outro';
+        document.getElementById('rom_raca').value = ['Brangus', 'Nelore', 'Cruzado', 'F1 Angus', 'Europeu'].includes(formulario.raca) ? formulario.raca : 'outro';
         window.verificarRacaOutra();
-        if (valor('rom_raca') === 'outro') document.getElementById('rom_raca_outra').value = p.raca || '';
-        pesosAdicionadosGlobais = [...(p.pesosIndividuais || [])];
+        if (valor('rom_raca') === 'outro') document.getElementById('rom_raca_outra').value = formulario.raca || '';
+        pesosAdicionadosGlobais = [...(formulario.pesosIndividuais || [])];
         while (totalCamposPeso < pesosAdicionadosGlobais.length) window.adicionarMais50();
         pesosAdicionadosGlobais.forEach((peso, i) => { document.getElementById(`peso_ind_${i + 1}`).value = peso; });
         window.calcularTotaisGrid();
-        anexosExistentes = [...(p.anexos || [])];
+        document.getElementById('rom_tipo_pesagem').value = formulario.tipoPesagem || (pesosAdicionadosGlobais.length ? 'individual' : 'balancao');
+        anexosLinksExistentes = unirAnexos(anterior.anexosLinks || [], p.anexosLinks || []);
+        anexosExistentes = [...new Set([...(anterior.anexos || []), ...(p.anexos || [])])];
+        window.calcularValorTotal();
         renderizarFilaArquivos();
         window.voltarTelaPrincipal();
     } catch (error) { alert(error.message); }
@@ -497,11 +519,16 @@ function renderizarHistorico(lista) {
     const tbody = document.getElementById('tbody-historico');
     tbody.innerHTML = '';
     if (!lista.length) {
-        tbody.innerHTML = `<tr><td colspan="${ehPesador ? 6 : 5}" class="celula-vazia">Nenhuma compra encontrada.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${ehPesador ? 7 : 5}" class="celula-vazia">Nenhuma compra encontrada.</td></tr>`;
         return;
     }
     lista.forEach(r => {
-        tbody.innerHTML += `<tr><td class="col-data"><strong>${escapeHtml(formatarData(r.dataCompra))}</strong></td><td class="col-destaque">${escapeHtml(r.pecuarista)}</td><td>${escapeHtml(r.cidade)} - ${escapeHtml(r.estado)}</td><td>${escapeHtml(r.fazendaDestino || '—')}</td><td class="col-num"><strong>${escapeHtml(r.cabecas)}</strong> cbç <span class="texto-suave">/ ${escapeHtml(r.pesoTotal)} kg</span></td>${ehPesador ? `<td>${r.status === 'enviado_escritorio' ? 'Enviado ao escritório' : 'Aguardando comprador'}</td>` : ''}</tr>`;
+        tbody.innerHTML += `<tr><td class="col-data"><strong>${escapeHtml(formatarData(r.dataCompra))}</strong></td><td class="col-destaque">${escapeHtml(r.pecuarista)}</td><td>${escapeHtml(r.cidade)} - ${escapeHtml(r.estado)}</td><td>${escapeHtml(r.fazendaDestino || '—')}</td><td class="col-num"><strong>${escapeHtml(r.cabecas)}</strong> cbç <span class="texto-suave">/ ${escapeHtml(r.pesoTotal)} kg</span></td>${ehPesador ? `<td>${r.status === 'enviado_escritorio' ? 'Enviado ao escritório' : 'Aguardando originador'}</td>` : ''}${ehPesador ? '<td class="col-documentos"></td>' : ''}</tr>`;
+        if (ehPesador) {
+            const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'btn btn-secundario btn-sm';
+            btn.textContent = 'Anexar documentos'; btn.onclick = () => abrirComplementos(r.id);
+            tbody.lastElementChild.querySelector('.col-documentos').appendChild(btn);
+        }
     });
 }
 window.filtrarHistorico = function() {
@@ -517,3 +544,62 @@ window.limparFiltrosHistorico = function() {
     document.getElementById('filtro_mes').value = '';
     renderizarHistorico(historicoDesteComprador);
 }
+
+function criarLinkAnexo(anexo) {
+    try {
+        if (new URL(anexo.urlDownload).protocol !== 'https:') return null;
+        const link = document.createElement('a'); link.href = anexo.urlDownload; link.target = '_blank';
+        link.rel = 'noopener noreferrer'; link.className = 'btn btn-secundario btn-sm'; link.textContent = 'Abrir';
+        return link;
+    } catch { return null; }
+}
+async function abrirComplementos(id) {
+    try {
+        const snap = await getDoc(doc(db, 'pesagens', id));
+        if (!snap.exists() || snap.data().pesadorUid !== usuarioAtual.uid) throw new Error('Pesagem não encontrada.');
+        complementoId = id;
+        document.getElementById('form-complementos').reset();
+        document.getElementById('lista-complementos').replaceChildren();
+        document.getElementById('complemento-pecuarista').textContent = snap.data().pecuarista;
+        const lista = document.getElementById('documentos-existentes'); lista.replaceChildren();
+        (snap.data().anexosLinks || []).forEach(anexo => {
+            const linha = document.createElement('div'); linha.className = 'item-anexo';
+            const texto = document.createElement('span'); texto.className = 'item-anexo-texto'; texto.textContent = anexo.nomeArquivo;
+            linha.appendChild(texto); const link = criarLinkAnexo(anexo); if (link) linha.appendChild(link); lista.appendChild(linha);
+        });
+        abrirTela('tela-documentos', 'nav-historico');
+    } catch (error) { alert(error.message); }
+}
+window.listarComplementos = function() {
+    const lista = document.getElementById('lista-complementos'); lista.replaceChildren();
+    [...document.getElementById('input_complementos').files].forEach(file => {
+        const item = document.createElement('div'); item.className = 'item-anexo'; item.textContent = file.name; lista.appendChild(item);
+    });
+}
+if (ehPesador) document.getElementById('form-complementos').addEventListener('submit', async e => {
+    e.preventDefault();
+    const arquivos = [...document.getElementById('input_complementos').files];
+    if (!arquivos.length) return alert('Selecione pelo menos um documento para complementar.');
+    const btn = document.getElementById('btn-complementar'); btn.disabled = true; btn.textContent = 'Enviando...';
+    let enviados = []; let gravado = false;
+    try {
+        const id = complementoId;
+        enviados = await enviarAnexos(arquivos, { uid: usuarioAtual.uid, pesagemId: id });
+        await runTransaction(db, async transacao => {
+            const origem = doc(db, 'pesagens', id);
+            const snap = await transacao.get(origem);
+            if (!snap.exists() || snap.data().pesadorUid !== usuarioAtual.uid) throw new Error('Pesagem indisponível.');
+            const p = snap.data();
+            transacao.update(origem, {
+                anexosLinks: unirAnexos(p.anexosLinks || [], enviados),
+                anexosCaminhos: [...(p.anexosCaminhos || []), ...enviados.map(a => a.caminho)], anexos: [...(p.anexos || []), ...enviados.map(a => a.nomeArquivo)],
+                revisao: (p.revisao || 1) + 1, status: 'aguardando_comprador', complementadoEm: serverTimestamp()
+            });
+            if (p.validadoEm) transacao.update(doc(db, 'romaneios', id), { status: 'aguardando_revalidacao', revalidacaoSolicitadaEm: serverTimestamp() });
+        });
+        gravado = true;
+        alert('Documentos enviados. A compra voltou para validação do originador.');
+        complementoId = null; window.mostrarTelaHistorico();
+    } catch (error) { if (!gravado) await limparUploads(enviados); alert('Erro ao complementar: ' + error.message); }
+    finally { btn.disabled = false; btn.textContent = 'Enviar para revalidação'; }
+});

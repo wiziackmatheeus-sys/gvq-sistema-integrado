@@ -1,47 +1,71 @@
-# Fluxo pesador → comprador → escritório
+# Pesador → originador → escritório
 
-## Uso
+## Cadastro e aprovação
 
-- Nova conta: selecionar **Pesador**. Mantém o padrão atual de aprovação automática das contas operacionais; escritório continua exigindo aprovação administrativa.
-- Pesador: selecionar o **comprador responsável em cada romaneio**, preencher pecuarista, origem/destino, data da pesagem e pagamento, sexo, raça e pesos individuais. Cabeças e peso total vêm dos pesos confirmados. Enviar ao comprador.
-- Comprador: **Compras pendentes → Conferir**. Verificar todos os dados, corrigir se necessário, incluir preço por kg, arroba ou cabeça e comissão. **Validar e enviar ao escritório**.
-- Escritório: recebe apenas a versão conferida e com negociação preenchida. Histórico e exportações existentes continuam disponíveis.
-- Pesador: acompanha o status no seu histórico, sem ler os dados financeiros. Os dados originais da sua pesagem permanecem como registro da origem; eventuais correções do comprador ficam na versão final enviada ao escritório.
+O pesador se cadastra normalmente e aguarda aprovação. No painel do escritório, **Pesadores** mostra as solicitações pendentes. O escritório seleciona o originador responsável e clica em **Aprovar e vincular**. A aprovação e o vínculo são gravados juntos; não é possível aprovar sem um originador válido. Contas de escritório continuam exigindo aprovação administrativa no Firebase.
 
-Nenhuma regra CSS, fonte, cor ou espaçamento foi alterado. A tela nova reutiliza as mesmas classes, componentes e estrutura do painel atual. As únicas alterações de conteúdo são os controles necessários ao novo fluxo.
+Pesadores aprovados visualizam apenas o nome do originador designado. Não consultam a lista de usuários nem escolhem outro responsável. O vínculo pode ser atualizado pelo escritório; registros já enviados continuam com o originador original e somente os novos registros usam o novo vínculo.
 
-## Modelo e proteção
+As contas antigas com `perfil: comprador` continuam funcionando como originadores. O cadastro novo utiliza `perfil: originador`. Os campos internos `compradorUid`, `comprador` e o status `aguardando_comprador` são preservados por compatibilidade com dados existentes; nos textos e controles da aplicação o termo é **originador**.
 
-`pesagens/{id}` contém somente dados operacionais, autoria por UID, comprador responsável e status. `romaneios/{id}` passa a conter a versão final, valores e comissão; seu ID é o mesmo da pesagem. O pesador não possui leitura desta coleção. Não basta esconder os campos na tela: **as regras do Firestore são parte obrigatória da implantação**.
+Pesadores criados na versão anterior, mesmo com `aprovado: true`, precisam receber um vínculo pelo escritório antes de entrar.
 
-A validação usa uma transação: lê a pesagem atual, confere o comprador/status, cria o romaneio e atualiza a pesagem. O banco permite a mudança de status somente junto com a criação do romaneio correspondente. Assim, não há envio parcial nem duplicação ao validar simultaneamente.
+## Pesagem e campos obrigatórios
 
-Os vínculos usam `compradorUid` e `pesadorUid`, lidos do perfil autenticado, em vez de confiar no nome do localStorage. Acesso direto a URLs verifica o perfil e a aprovação no banco. As regras mantêm perfis imutáveis pelo próprio usuário.
+- **Balanção:** preencher quantidade de cabeças e peso total; não exige pesos individuais.
+- **Individual:** lançar e confirmar os pesos na grade. Cabeças e peso total precisam corresponder à grade. Para usar o total do balanção em vez da grade, selecionar Balanção; os pesos individuais são retirados desse lançamento.
+- **Peso médio:** calculado automaticamente por peso total ÷ cabeças, com duas casas decimais. É salvo e incluído na exportação geral.
+- As raças incluem Brangus, Nelore, Cruzado, **F1 Angus**, **Europeu** e Outra.
+- Origem, destino, dados do pecuarista, datas, sexo, raça, cabeças e peso total são obrigatórios. Cadastros de pecuaristas e destinos incompletos precisam ser corrigidos pelo escritório.
+- Na negociação, o originador também informa preço, unidade, corretor e comissão. Quando não houver corretor, preencher **Sem corretor**; sem comissão, selecionar Nenhuma e informar zero.
+- Somente anexos e observações são opcionais. Filtros de pesquisa e os campos individuais de uma pesagem por balanção não são informações obrigatórias do cadastro.
+
+Nenhum CSS, fonte, cor ou espaçamento foi alterado. Os campos e telas novos reutilizam os componentes existentes.
+
+## Documentos e revalidação
+
+Os arquivos novos são enviados ao Firebase Storage, com caminho único e URL de acesso. O registro só declara sucesso depois do upload e da gravação dos metadados. Se o envio falhar, os dados do formulário permanecem e a compra não é confirmada. Limite por arquivo: 25 MB.
+
+No histórico do pesador, **Anexar documentos** permite complementar qualquer pesagem dele. A complementação acrescenta arquivos, preserva os anteriores e incrementa a revisão. Se a compra já foi aprovada, a mesma transação marca sua versão financeira como **aguardando revalidação**. Ela sai da lista e das exportações do escritório até o originador clicar em **Revalidar**, conferir os novos arquivos e confirmar novamente. Os valores e as correções da negociação anterior são preenchidos para a nova conferência.
+
+O pesador não lê nem modifica os valores. A única alteração permitida a ele no documento financeiro é a marca de revalidação, junto com a complementação dos documentos operacionais. A última versão financeira já aprovada permanece armazenada enquanto aguarda revisão; o escritório não recebe os arquivos novos antes da revalidação. O pesador continua vendo somente os arquivos operacionais, sem os anexos privados da negociação.
+
+Cada validação verifica a revisão atual, evitando que um originador confirme uma pesagem enquanto novos arquivos são acrescentados. Documentos vinculados não podem ser sobrescritos ou apagados pelo cliente. Uploads sem vínculo permitem limpeza pelo autor em caso de falha antes da gravação.
+
+Arquivos antigos que eram guardados somente pelo nome não são recuperáveis por esta alteração. Os nomes são preservados e os arquivos podem ser anexados novamente pelo pesador.
+
+## Modelo de acesso
+
+`usuarios/{uid}` contém a aprovação e o vínculo do pesador. Somente o próprio usuário e o escritório leem o perfil; somente o escritório aprovado pode atribuir um originador ao pesador.
+
+`pesagens/{id}` contém os dados operacionais originais, `revisao`, anexos do pesador e status. Apenas seu autor e seu originador têm leitura. `romaneios/{id}` contém a versão final, valores, comissão, `revisaoValidada` e anexos da negociação. O pesador não tem leitura dessa coleção. A validação ou revalidação grava o romaneio e o status da pesagem em uma transação.
+
+No Storage, `pesagens/{id}/{pesadorUid}/{arquivo}` guarda os documentos operacionais; `negociacoes/{id}/{originadorUid}/{arquivo}` guarda documentos privados do originador. O escritório lê arquivos apenas de pesagens finalizadas. As regras de Firestore e Storage são parte obrigatória da implantação.
 
 ## Implantação
 
-1. Fazer backup das regras atuais do console Firebase e dos dados. As regras atuais não foram fornecidas no repositório; comparar com `firestore.rules` para preservar permissões de outras aplicações/coleções que eventualmente compartilhem o projeto.
-2. Garantir que as contas operacionais existentes possuem `aprovado: true`. Contas de escritório não aprovadas continuam bloqueadas.
-3. Conferir o vínculo dos romaneios antigos: documentos sem `compradorUid` continuam visíveis ao escritório; para aparecerem no histórico do comprador precisam do UID correto. Há um script administrativo com simulação padrão:
+1. Fazer backup dos dados e das regras atuais de Firestore/Storage. As regras publicadas no projeto não estão acessíveis por este repositório; comparar antes de aplicar para preservar permissões de outras aplicações ou coleções.
+2. **Ativar/configurar o bucket Firebase Storage do projeto** antes de testar arquivos em produção. Confirmar os requisitos de faturamento no console. Na primeira publicação de regras do Storage com consulta ao Firestore, autorizar a permissão entre serviços solicitada pelo Firebase. Esta mudança não altera automaticamente o console nem o faturamento.
+3. Garantir que originadores existentes possuem `aprovado: true` e que o escritório possui uma conta aprovada. Vincular os pesadores pela aba Pesadores.
+4. Romaneios antigos sem `compradorUid` continuam no escritório; para voltarem ao histórico individual, revisar o vínculo por UID. Há simulação administrativa:
 
    ```sh
    npm install
-   # Usar credenciais administrativas locais (Application Default Credentials).
    node scripts/vincular-historico.mjs --projeto=gvq-sistema-compras
-   # Depois de revisar os vínculos:
+   # Somente depois de conferir os vínculos, com credenciais administrativas locais:
    node scripts/vincular-historico.mjs --projeto=gvq-sistema-compras --aplicar
    ```
 
-   Somente nomes que correspondem exatamente a um único comprador aprovado são vinculados. Ausências e nomes duplicados exigem conferência administrativa. O script não inventa autores nem modifica os dados originais da negociação.
-4. Aplicar as regras revisadas ao projeto correto antes de liberar a versão com pesador:
+   Somente correspondências únicas de nomes são vinculadas. O script não aprova pesadores nem altera as negociações.
+5. Aplicar as regras revisadas e publicar os arquivos da aplicação na mesma janela de atualização:
 
    ```sh
-   npx firebase-tools deploy --only firestore:rules --project gvq-sistema-compras
+   npx firebase-tools deploy --only firestore:rules,storage --project gvq-sistema-compras
    ```
 
-5. Publicar os arquivos do aplicativo e verificar o fluxo com contas dos três perfis. Esta alteração não publica automaticamente o aplicativo nem aplica regras no projeto real.
+6. Validar cadastro → aprovação/vínculo → balanção/individual → negociação → escritório → documento posterior → revalidação. Nada disso foi executado no banco de produção durante o desenvolvimento.
 
-## Verificação local
+## Testes locais
 
 Requer Node 22+ e Java 17+ para a versão de firebase-tools fixada em package.json.
 
@@ -49,12 +73,11 @@ Requer Node 22+ e Java 17+ para a versão de firebase-tools fixada em package.js
 npm install
 npm test
 npm run test:rules
+npm run test:storage
 npx playwright install chromium
 npm run test:browser
 ```
 
-O teste de regras usa exclusivamente `demo-gvq-tests` no emulador. O teste de navegador intercepta Firebase, IBGE e recursos externos, usando dados simulados; nunca grava no Firebase real. Para comparar com uma revisão específica do layout: `GVQ_BASE_REF=SHA_ANTERIOR npm run test:browser`. Pode-se indicar Chromium instalado por `GVQ_CHROMIUM_PATH`.
+As regras usam emuladores no projeto `demo-gvq-tests`. O navegador usa Firebase, Storage e IBGE simulados. Nenhum teste grava em produção. Para comparar estilos com uma revisão anterior, definir `GVQ_BASE_REF=SHA_ANTERIOR`; para utilizar Chromium já instalado, definir `GVQ_CHROMIUM_PATH`.
 
-## Limite já existente
-
-Os anexos continuam com o comportamento atual: só seus nomes são salvos. Esta mudança preserva esses nomes no encaminhamento, mas não implementa envio dos arquivos para Storage. Notas e anexos adicionais da negociação ficam apenas no documento do comprador/escritório.
+A aplicação continua usando Firebase até uma futura migração para MySQL, que precisará transportar também autenticação, permissões e armazenamento dos arquivos.

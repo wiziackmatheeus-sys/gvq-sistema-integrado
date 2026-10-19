@@ -8,7 +8,7 @@ if (!projeto) throw new Error('Informe explicitamente --projeto=ID_DO_PROJETO. S
 initializeApp({ credential: applicationDefault(), projectId: projeto });
 const db = getFirestore();
 const [usuarios, romaneios] = await Promise.all([
-    db.collection('usuarios').where('perfil', '==', 'comprador').where('aprovado', '==', true).get(),
+    db.collection('usuarios').where('perfil', 'in', ['originador', 'comprador']).where('aprovado', '==', true).get(),
     db.collection('romaneios').get()
 ]);
 const porNome = new Map();
