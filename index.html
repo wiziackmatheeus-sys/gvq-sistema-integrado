@@ -25,10 +25,7 @@
 
                 <h1 class="sr-only">GVQ — Sistema de Compras</h1>
 
-                <div class="tabs">
-                    <button type="button" class="tab active" onclick="switchTab('login')">Entrar</button>
-                    <button type="button" class="tab" onclick="switchTab('cadastro')">Nova conta</button>
-                </div>
+                <div class="tabs"><button type="button" class="tab active" style="grid-column: 1 / -1;" aria-current="page">Entrar</button></div>
 
                 <div id="login-form" class="form-content active">
                     <form id="form-login" class="auth-form">
@@ -50,29 +47,7 @@
                     </form>
                 </div>
 
-                <div id="cadastro-form" class="form-content">
-                    <form id="form-cadastro" class="auth-form">
-                        <div class="form-group">
-                            <label for="cad_nome">Nome completo</label>
-                            <input type="text" id="cad_nome" autocomplete="name" required onkeyup="gerarUsuario()">
-                            <span class="user-hint" id="hint-usuario" style="display:none;">Seu login será: <strong id="usuario-gerado"></strong></span>
-                        </div>
-                        <div class="form-group">
-                            <label for="cad_perfil">Função</label>
-                            <select id="cad_perfil" required>
-                                <option value="" disabled selected>Selecione...</option>
-                                <option value="originador">Originador</option>
-                                <option value="pesador">Pesador</option>
-                                <option value="escritorio">Escritório</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="cad_senha">Senha (mínimo 6)</label>
-                            <input type="password" id="cad_senha" minlength="6" required autocomplete="new-password">
-                        </div>
-                        <button type="submit" id="btn-cadastrar" class="btn btn-marca btn-lg btn-bloco">Cadastrar</button>
-                    </form>
-                </div>
+                <p class="texto-suave">Para obter acesso, solicite seu cadastro ao escritório.</p>
             </div>
         </section>
     </main>

@@ -56,7 +56,7 @@ test('escritório cria pesador vinculado com senha individual, sem mudar sua pr�
     const segundo=await chamar('criarConta',token,{nome:'Novo Originador',login:'novo.originador',perfil:'originador'});
     assert.notEqual(segundo.result.senhaTemporaria,criado.senhaTemporaria);
     assert.equal((await chamar('criarConta',token,{nome:'Outro',login:'novo.pesador',perfil:'originador'})).error.status,'ALREADY_EXISTS');
-    assert.equal((await chamar('criarConta',token,{nome:'Escritório',login:'admin.novo',perfil:'escritorio'})).error.status,'INVALID_ARGUMENT');
+    assert.equal((await chamar('criarConta',token,{nome:'Escritório',login:'admin.novo',perfil:'administrador'})).error.status,'INVALID_ARGUMENT');
     assert.ok((await chamar('criarConta',token,{nome:'Sem vínculo',login:'sem.vinculo',perfil:'pesador',compradorUid:'office'})).error);
 });
 test('redefinição, primeiro acesso e troca preservam UID, vínculo e histórico',async () => {
@@ -92,4 +92,21 @@ test('operações concorrentes são bloqueadas e falha no Auth mantém conta em 
     await assert.rejects(servico.redefinirSenha('office',{uid:'weigher'}));
     assert.equal((await db.doc('usuarios/weigher').get()).data().trocaSenhaObrigatoria,true);
     assert.equal((await db.doc('operacoesContas/weigher').get()).exists,false);
+});
+
+test('escritório cria outro escritório aprovado; a troca de senha valida o primeiro acesso antes de gerenciar contas', async () => {
+    const token=(await entrar('office','Original-123')).idToken;
+    const resposta=await chamar('criarConta',token,{nome:'Novo Escritório',login:'novo.escritorio',perfil:'escritorio'});
+    assert.ok(resposta.result,JSON.stringify(resposta));const criado=resposta.result;
+    const perfil=(await db.doc(`usuarios/${criado.uid}`).get()).data();
+    assert.equal(perfil.perfil,'escritorio');assert.equal(perfil.aprovado,true);assert.equal(perfil.aprovadoPor,'office');
+    assert.equal(perfil.criadoPor,'office');assert.ok(perfil.aprovadoEm);assert.equal(perfil.compradorUid,undefined);assert.equal(perfil.trocaSenhaObrigatoria,true);
+    const primeiraEntrada=await entrar('novo.escritorio',criado.senhaTemporaria);
+    assert.equal((await chamar('criarConta',primeiraEntrada.idToken,{nome:'Pessoa',login:'pessoa.nova',perfil:'originador'})).error.status,'PERMISSION_DENIED');
+    assert.ok((await chamar('trocarSenhaInicial',primeiraEntrada.idToken,{senhaAtual:criado.senhaTemporaria,novaSenha:'Escritorio-nova-123'})).result);
+    const novaEntrada=await entrar('novo.escritorio','Escritorio-nova-123');
+    assert.ok((await chamar('criarConta',novaEntrada.idToken,{nome:'Pessoa',login:'pessoa.nova',perfil:'originador'})).result);
+    const reset=await chamar('redefinirSenha',token,{uid:criado.uid});assert.ok(reset.result);
+    assert.equal((await db.doc(`usuarios/${criado.uid}`).get()).data().trocaSenhaObrigatoria,true);
+    assert.equal((await db.doc(`usuarios/${criado.uid}`).get()).data().aprovado,true);
 });

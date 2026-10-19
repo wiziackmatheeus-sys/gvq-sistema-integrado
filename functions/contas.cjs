@@ -1,5 +1,5 @@
 const { randomBytes, randomUUID } = require('node:crypto');
-const perfisGerenciados = ['pesador', 'originador', 'comprador'];
+const perfisGerenciados = ['pesador', 'originador', 'comprador', 'escritorio'];
 
 function criarServicoContas({ auth, db, FieldValue, erro, verificarSenha }) {
     const falhar = (codigo, mensagem) => { throw erro(codigo, mensagem); };
@@ -35,7 +35,7 @@ function criarServicoContas({ auth, db, FieldValue, erro, verificarSenha }) {
     async function criarConta(uid, dados = {}) {
         await exigirEscritorio(uid);
         const nome = texto(dados.nome), login = texto(dados.login).toLowerCase(), tipo = dados.perfil;
-        if (nome.length < 3 || nome.length > 100 || !/^[a-z0-9][a-z0-9._-]{2,59}$/.test(login) || !['pesador','originador'].includes(tipo)) falhar('invalid-argument', 'Informe nome, usuário válido e perfil de pesador ou originador.');
+        if (nome.length < 3 || nome.length > 100 || !/^[a-z0-9][a-z0-9._-]{2,59}$/.test(login) || !['pesador','originador','escritorio'].includes(tipo)) falhar('invalid-argument', 'Informe nome, usuário válido e perfil válido.');
         let vinculo = {};
         if (tipo === 'pesador') {
             const compradorUid = texto(dados.compradorUid);
@@ -49,7 +49,7 @@ function criarServicoContas({ auth, db, FieldValue, erro, verificarSenha }) {
         try {
             criado = await auth.createUser({ email: `${login}@gvq.com.br`, password: senhaTemporaria, displayName: nome, disabled: true });
             await db.doc(`usuarios/${criado.uid}`).create({ nome, login, perfil: tipo, aprovado: true, ...vinculo,
-                trocaSenhaObrigatoria: true, criadoPor: uid, criadoEm: FieldValue.serverTimestamp(), senhaTemporariaEm: FieldValue.serverTimestamp() });
+                trocaSenhaObrigatoria: true, aprovadoPor: uid, aprovadoEm: FieldValue.serverTimestamp(), criadoPor: uid, criadoEm: FieldValue.serverTimestamp(), senhaTemporariaEm: FieldValue.serverTimestamp() });
             await registrar('criacao', criado.uid, uid);
             await auth.updateUser(criado.uid, { disabled: false });
             return { uid: criado.uid, login, senhaTemporaria };
@@ -68,9 +68,10 @@ function criarServicoContas({ auth, db, FieldValue, erro, verificarSenha }) {
         await exigirEscritorio(uid);
         const alvoUid = texto(dados.uid);
         if (!/^[A-Za-z0-9_-]{1,128}$/.test(alvoUid)) falhar('invalid-argument', 'Conta inválida.');
+        if (alvoUid === uid) falhar('failed-precondition', 'Outra conta de escritório deve redefinir sua senha.');
         return comTrava(alvoUid, async () => {
             const alvo = await perfil(alvoUid);
-            if (!perfisGerenciados.includes(alvo.perfil)) falhar('permission-denied', 'Este recurso gerencia pesadores e originadores.');
+            if (!perfisGerenciados.includes(alvo.perfil)) falhar('permission-denied', 'Perfil não gerenciado por este recurso.');
             await auth.getUser(alvoUid);
             const senhaTemporaria = randomBytes(12).toString('base64url');
             // Primeiro bloqueia acesso operacional; falhas posteriores mantêm a conta bloqueada.

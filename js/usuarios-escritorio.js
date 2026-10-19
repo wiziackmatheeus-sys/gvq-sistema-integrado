@@ -21,7 +21,7 @@ export function atualizarUsuarios(lista) {
 function renderizarUsuarios() {
     const termos = normalizarTexto(elemento('busca-usuarios').value).split(/\s+/).filter(Boolean);
     const perfil = elemento('filtro-perfil-usuarios').value, situacao = elemento('filtro-situacao-usuarios').value;
-    const lista = usuarios.filter(u => ['pesador','originador','comprador'].includes(u.perfil))
+    const lista = usuarios.filter(u => ['pesador','originador','comprador','escritorio'].includes(u.perfil))
         .filter(u => (!perfil || (u.perfil === 'comprador' ? 'originador' : u.perfil) === perfil)
             && termos.every(t => normalizarTexto([u.nome,u.login,u.comprador].join(' ')).includes(t))
             && (!situacao || (situacao === 'senha' ? u.trocaSenhaObrigatoria : situacao === 'pendente' ? !u.aprovado || (u.perfil === 'pesador' && !u.compradorUid) : u.aprovado && (u.perfil !== 'pesador' || u.compradorUid) && !u.trocaSenhaObrigatoria)));
@@ -30,7 +30,7 @@ function renderizarUsuarios() {
     lista.forEach(p => {
         const tr = document.createElement('tr');
         const ativo = p.aprovado && (p.perfil !== 'pesador' || p.compradorUid);
-        for (const texto of [p.nome + (p.login ? ' · ' + p.login : ''),p.perfil === 'pesador' ? 'Pesador' : 'Originador',p.trocaSenhaObrigatoria ? 'Troca de senha pendente' : ativo ? 'Aprovado' : 'Aguardando aprovação']) {
+        for (const texto of [p.nome + (p.login ? ' · ' + p.login : ''),p.perfil === 'pesador' ? 'Pesador' : p.perfil === 'escritorio' ? 'Escritório' : 'Originador',p.trocaSenhaObrigatoria ? 'Troca de senha pendente' : ativo ? 'Aprovado' : 'Aguardando aprovação']) {
             const td = document.createElement('td'); td.textContent = texto; tr.appendChild(td);
         }
         const tdVinculo = document.createElement('td'), acoes = document.createElement('td');
@@ -56,15 +56,18 @@ function renderizarUsuarios() {
             };
             acoes.appendChild(aprovar);
         } else tdVinculo.textContent = '—';
-        const redefinir = document.createElement('button'); redefinir.type = 'button'; redefinir.className = 'btn btn-fantasma btn-sm'; redefinir.textContent = 'Redefinir senha';
-        redefinir.onclick = async () => {
-            if (!confirm('Redefinir a senha de ' + p.nome + '? A senha atual deixará de funcionar; o histórico será preservado.')) return;
-            limparCredenciais(); redefinir.disabled = true;
-            try { mostrarCredenciais(await chamarConta('redefinirSenha',{ uid:p.uid })); }
-            catch (error) { alert('Não foi possível redefinir: ' + error.message); }
-            finally { redefinir.disabled = false; }
-        };
-        acoes.appendChild(redefinir); tr.append(tdVinculo,acoes); tbody.appendChild(tr);
+        if (p.uid !== auth.currentUser.uid) {
+            const redefinir = document.createElement('button'); redefinir.type = 'button'; redefinir.className = 'btn btn-fantasma btn-sm'; redefinir.textContent = 'Redefinir senha';
+            redefinir.onclick = async () => {
+                if (!confirm('Redefinir a senha de ' + p.nome + '? A senha atual deixará de funcionar; o histórico será preservado.')) return;
+                limparCredenciais(); redefinir.disabled = true;
+                try { mostrarCredenciais(await chamarConta('redefinirSenha',{ uid:p.uid })); }
+                catch (error) { alert('Não foi possível redefinir: ' + error.message); }
+                finally { redefinir.disabled = false; }
+            };
+            acoes.appendChild(redefinir);
+        } else acoes.textContent = '—';
+        tr.append(tdVinculo,acoes); tbody.appendChild(tr);
     });
 }
 ['busca-usuarios','filtro-perfil-usuarios','filtro-situacao-usuarios'].forEach(id => elemento(id).addEventListener(id === 'busca-usuarios' ? 'input' : 'change',renderizarUsuarios));

@@ -96,12 +96,8 @@ service cloud.firestore {
     match /usuarios/{uid} {
       // Apenas o escritório lista usuários e originadores; o pesador lê só seu próprio vínculo.
       allow read: if logado() && (request.auth.uid == uid || escritorio());
-      allow create: if logado() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['nome', 'login', 'perfil', 'aprovado'])
-        && request.resource.data.nome is string && request.resource.data.nome.size() > 0
-        && request.resource.data.login is string && request.resource.data.login.size() > 0
-        && request.resource.data.perfil in ['originador', 'comprador', 'pesador', 'escritorio']
-        && request.resource.data.aprovado == (request.resource.data.perfil in ['originador', 'comprador']);
+      // Perfis são criados somente pelas funções administrativas (Admin SDK).
+      allow create: if false;
       allow update: if escritorio() && resource.data.perfil == 'pesador'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['aprovado', 'compradorUid', 'comprador', 'aprovadoPor', 'aprovadoEm'])
         && request.resource.data.aprovado == true && request.resource.data.aprovadoPor == request.auth.uid
