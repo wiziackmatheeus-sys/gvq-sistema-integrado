@@ -46,6 +46,24 @@ export function validarNegociacao(dados) {
     if (!dados.valorTotalGado || !dados.totalComissao) throw new Error('Confira o total do gado e da comissão.');
     if (dados.tipoComissao === 'Nenhuma' && Number(dados.valorComissao) !== 0) throw new Error('Sem comissão, o valor deve ser zero.');
 }
+// A ordem das chaves de um mapa não representa mudança no seu conteúdo.
+function normalizarMapa(valor) {
+    if (Array.isArray(valor)) return valor.map(normalizarMapa);
+    if (valor !== null && typeof valor === 'object') {
+        return Object.fromEntries(Object.keys(valor).sort().map(chave => [chave, normalizarMapa(valor[chave])]));
+    }
+    return valor;
+}
+export function pesagemFoiAlterada(original, atual) {
+    if (!original || !atual || (original.revisao ?? 1) !== (atual.revisao ?? 1)) return true;
+    // Datas técnicas de sincronização não são dados conferidos no formulário.
+    // Novos documentos continuam detectados pela revisão e pelos próprios anexos.
+    const camposConferidos = [...camposPesagem, 'compradorUid', 'comprador', 'pesadorUid', 'pesador',
+        'status', 'anexosLinks', 'anexosCaminhos'];
+    return camposConferidos.some(campo =>
+        JSON.stringify(normalizarMapa(original[campo])) !== JSON.stringify(normalizarMapa(atual[campo])));
+}
+
 export function escapeHtml(valor) {
     return String(valor ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }

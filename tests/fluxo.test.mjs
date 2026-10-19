@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dadosPesagem, pesoMedio, validarPesagem, validarNegociacao } from '../js/fluxo-compra.js';
+import { dadosPesagem, pesoMedio, pesagemFoiAlterada, validarPesagem, validarNegociacao } from '../js/fluxo-compra.js';
 const base = { estado: 'SP', cidade: 'Barretos', fazendaDestino: 'Fazenda GVQ', cidadeDestino: 'Ibitinga', ufDestino: 'SP', pecuarista: 'Pecuarista', pecuaristaDocumento: '123', pecuaristaBanco: 'Banco', pecuaristaAgencia: '1', pecuaristaConta: '2', dataCompra: '2026-10-19', dataPagamento: '2026-10-23', cabecas: '2', pesoTotal: '650.50', pesoMedio: '325.25', tipoPesagem: 'individual', sexo: 'Macho', raca: 'F1 Angus', pesosIndividuais: [300, 350.5], observacoes: '', anexos: [] };
 const negociacao = { ...base, precoUnitario: '300', unidadePreco: 'Por Arroba', valorTotalGado: 'R$ 6.505,00', corretor: 'Sem corretor', tipoComissao: 'Nenhuma', valorComissao: '0', totalComissao: 'R$ 0,00' };
 test('dados compartilhados excluem todos os valores da negociação', () => {
@@ -23,4 +23,33 @@ test('negociação exige preço, corretor, comissão e totais; aceita zero quand
     assert.doesNotThrow(() => validarNegociacao(negociacao));
     for (const campo of ['precoUnitario','unidadePreco','corretor','tipoComissao','valorComissao','valorTotalGado','totalComissao']) assert.throws(() => validarNegociacao({ ...negociacao, [campo]: '' }), campo);
     assert.throws(() => validarNegociacao({ ...negociacao, valorComissao: '10' }));
+});
+
+test('mesmo balanção com chaves de mapas em outra ordem não é uma alteração', () => {
+    const original = { ...base, tipoPesagem: 'balancao', pesosIndividuais: [], revisao: 1,
+        anexosLinks: [{ nomeArquivo: 'GTA.pdf', caminho: 'pesagens/p1/GTA', urlDownload: 'https://example.test/GTA' }] };
+    const atual = Object.fromEntries(Object.entries({ ...original,
+        anexosLinks: [{ urlDownload: 'https://example.test/GTA', caminho: 'pesagens/p1/GTA', nomeArquivo: 'GTA.pdf' }]
+    }).reverse());
+    assert.notEqual(JSON.stringify(original), JSON.stringify(atual));
+    assert.equal(pesagemFoiAlterada(original, atual), false);
+});
+test('sincronização de timestamps não invalida dados de negócio inalterados', () => {
+    const original = { ...base, revisao: 1, timestamp: null };
+    const atual = { ...base, revisao: 1, timestamp: { seconds: 1792425600, nanoseconds: 0 } };
+    assert.equal(pesagemFoiAlterada(original, atual), false);
+});
+test('alterações reais continuam exigindo nova conferência', () => {
+    const original = { ...base, revisao: 1, compradorUid: 'buyer1', pesadorUid: 'weigher1', anexosLinks: [], anexosCaminhos: [] };
+    for (const campos of [{ revisao: 2 }, { cabecas: '3' }, { pesoTotal: '700' }, { dataPagamento: '2026-10-24' },
+        { compradorUid: 'buyer2' }, { pesadorUid: 'weigher2' }, { observacoes: 'Outro lote' },
+        { anexos: ['GTA.pdf'] }, { anexosCaminhos: ['pesagens/p1/GTA'] }, { anexosLinks: [{ nomeArquivo: 'GTA.pdf' }] },
+        { pesosIndividuais: [350.5, 300] }]) {
+        assert.equal(pesagemFoiAlterada(original, { ...original, ...campos }), true, JSON.stringify(campos));
+    }
+});
+test('registros antigos sem revisão continuam comparáveis sem ignorar mudanças', () => {
+    assert.equal(pesagemFoiAlterada(base, { ...base, revisao: 1 }), false);
+    assert.equal(pesagemFoiAlterada(null, base), true);
+    assert.equal(pesagemFoiAlterada(base, null), true);
 });

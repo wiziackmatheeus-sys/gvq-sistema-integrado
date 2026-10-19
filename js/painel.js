@@ -3,7 +3,7 @@ import { collection, addDoc, onSnapshot, query, where, orderBy, serverTimestamp,
 import { auth, db } from "./firebase.js";
 import { enviarAnexos, limparUploads, unirAnexos } from './anexos.js';
 import { exigirPerfil } from "./auth-guard.js";
-import { dadosPesagem, validarPesagem, validarNegociacao, pesoMedio, escapeHtml } from "./fluxo-compra.js";
+import { dadosPesagem, validarPesagem, validarNegociacao, pesoMedio, pesagemFoiAlterada, escapeHtml } from "./fluxo-compra.js";
 
 let pecuaristasGlobais = [];
 let destinosGlobais = [];
@@ -408,7 +408,7 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
                 if (!snap.exists() || snap.data().compradorUid !== usuarioAtual.uid || snap.data().status !== 'aguardando_comprador') {
                     throw new Error('Esta compra já foi validada ou não pertence a você.');
                 }
-                if (JSON.stringify(snap.data()) !== JSON.stringify(pesagemOriginal)) throw new Error('A pesagem foi alterada. Abra a compra novamente antes de validar.');
+                if (pesagemFoiAlterada(pesagemOriginal, snap.data())) throw new Error('O registro foi atualizado. Abra a compra novamente para conferir os dados e documentos.');
                 const pesagem = snap.data();
                 transacao.set(destino, {
                     ...dados, anexosLinks: unirAnexos(anexosLinksExistentes, enviados),
