@@ -1,3 +1,4 @@
+import { gerarCodigoCompra } from './codigo-compra.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, runTransaction, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
@@ -416,8 +417,10 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
                 }
                 if (pesagemFoiAlterada(pesagemOriginal, snap.data())) throw new Error('O registro foi atualizado. Abra a compra novamente para conferir os dados e documentos.');
                 const pesagem = snap.data();
+                const anterior = pesagem.validadoEm ? await transacao.get(destino) : null;
+                const codigoCompra = anterior?.data()?.codigoCompra || gerarCodigoCompra(dados, origem.id);
                 transacao.set(destino, {
-                    ...dados, anexosLinks: unirAnexos(anexosLinksExistentes, enviados),
+                    ...dados, codigoCompra, anexosLinks: unirAnexos(anexosLinksExistentes, enviados),
                     anexosCaminhos: unirAnexos(anexosLinksExistentes, enviados).map(a => a.caminho).filter(Boolean),
                     compradorUid: usuarioAtual.uid, comprador: usuarioAtual.nome,
                     pesadorUid: pesagem.pesadorUid, pesador: pesagem.pesador, pesagemId: snap.id,

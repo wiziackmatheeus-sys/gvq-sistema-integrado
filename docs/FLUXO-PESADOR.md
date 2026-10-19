@@ -34,6 +34,14 @@ Cada validação verifica a revisão atual, evitando que um originador confirme 
 
 Arquivos antigos que eram guardados somente pelo nome não são recuperáveis por esta alteração. Os nomes são preservados e os arquivos podem ser anexados novamente pelo pesador.
 
+## Identificação automática da compra
+
+Na primeira validação pelo originador, o app gera `codigoCompra` no formato `OC-FAZENDA-AAAAMM-ID`: nome da fazenda de destino sem acentos/espaços (até 24 caracteres), ano/mês da data da compra e ID completo do registro. Exemplo: `OC-SAO-JOSE-202610-AbCd1234EFgh5678IjKl`. O ID completo distingue compras simultâneas da mesma fazenda/mês sem depender de contador. O mês não depende do relógio ou fuso de quem abre a tela.
+
+O código é automático, sem campo para edição. Fica abaixo do pecuarista na tabela do escritório, com o texto completo ao passar o mouse, e no título do histórico. A coluna **Ordem de Compra** é incluída nas duas exportações CSV compatíveis com Excel (compras e pesos); o ID interno também é mantido. Revalidações preservam o código original, mesmo se forem corrigidos o destino ou a data. As regras impedem alterar um código já gravado.
+
+Compras antigas sem código recebem uma identificação calculada ao visualizar/exportar, sem migração em massa. Para essas compras, o código é calculado com seus dados atuais; registros sem fazenda ou data usam `FAZENDA` e `SEM-DATA`. Na próxima revalidação de um registro antigo, o código é gravado. É necessário publicar as novas regras Firestore junto com a atualização do app.
+
 ## Etapas do escritório
 
 A coluna **Etapa do escritório** usa as tags existentes como seletor. Toda compra validada pelo originador chega como **Recebida**. Ao selecionar **Em andamento**, a pessoa do escritório assume o atendimento e seu nome fica visível. Depois pode selecionar **Finalizada**, registrando quem finalizou e quando. Uma compra finalizada pode ser reaberta em **Em andamento**; quem reabre assume o atendimento. Não é permitido pular diretamente de Recebida para Finalizada.
