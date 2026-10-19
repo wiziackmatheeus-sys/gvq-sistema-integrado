@@ -2,12 +2,15 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/f
 import { collection, addDoc, query, orderBy, serverTimestamp, doc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
 import { criarControleSessao } from './sessao.js';
+import { etapasEscritorio, etapaAtual, podeMudarEtapa } from './etapas-escritorio.js';
 import { exigirPerfil } from "./auth-guard.js";
 import { escapeHtml, pesoMedio } from "./fluxo-compra.js";
 
 let pecuaristasGlobais = [];
 let destinosGlobais = [];
 let romaneiosGlobais = [];
+let usuarioEscritorio = null;
+let cancelarHistorico = null;
 const sessao = criarControleSessao(error => alert('Não foi possível carregar os dados: ' + error.message));
 
 const bancosBrasileiros = [
@@ -24,6 +27,7 @@ onAuthStateChanged(auth, async (user) => {
         const sessaoValida = sessao.iniciar();
         const perfil = await exigirPerfil(user, ['escritorio'], sessaoValida);
         if (!perfil || !sessaoValida()) return;
+        usuarioEscritorio = perfil;
         let logado = perfil.nome;
         document.getElementById('nome-usuario').innerText = 'Olá, ' + logado.split(' ')[0];
         
@@ -89,6 +93,8 @@ window.validarSelecaoDaLista = function(inputElement, dataListId) {
 }
 
 window.mostrarTela = function(telaId) {
+    cancelarHistorico?.(); cancelarHistorico = null;
+    document.getElementById('tela-historico-compra').style.display = 'none';
     document.getElementById('tela-romaneios').style.display = 'none';
     document.getElementById('tela-pecuaristas').style.display = 'none';
     document.getElementById('tela-destinos').style.display = 'none';
@@ -147,7 +153,7 @@ function iniciarSincronizacaoEmTempoReal() {
         tbody.innerHTML = '';
 
         if(snapshot.empty) {
-            tbody.innerHTML = '<tr><td colspan="13" class="celula-vazia">Nenhum romaneio registrado ainda.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="14" class="celula-vazia">Nenhum romaneio registrado ainda.</td></tr>';
         } else {
             snapshot.forEach((docSnap) => {
                 let r = docSnap.data();
@@ -156,7 +162,7 @@ function iniciarSincronizacaoEmTempoReal() {
                 romaneiosGlobais.push(r);
             });
 
-            if (!romaneiosGlobais.length) tbody.innerHTML = '<tr><td colspan="13" class="celula-vazia">Nenhuma compra validada disponível.</td></tr>';
+            if (!romaneiosGlobais.length) tbody.innerHTML = '<tr><td colspan="14" class="celula-vazia">Nenhuma compra validada disponível.</td></tr>';
             document.getElementById('chkAll').checked = false;
             romaneiosGlobais.sort((a, b) => (b.dataCompra || '').localeCompare(a.dataCompra || '')).forEach(r => {
                 let dataF = r.dataCompra ? r.dataCompra.split('-').reverse().join('/') : '-';
@@ -183,6 +189,7 @@ function iniciarSincronizacaoEmTempoReal() {
                         <td class="col-data"><strong>${escapeHtml(dataF)}</strong></td>
                         <td class="col-destaque"><span class="texto-cortado">${escapeHtml(r.pecuarista)}</span></td>
                         <td>${escapeHtml((r.comprador || '').split(' ')[0])}</td>
+                        <td class="col-etapa-escritorio"></td>
                         <td class="col-num"><strong>${escapeHtml(r.cabecas)}</strong></td>
                         <td class="col-num">${escapeHtml(r.pesoTotal)}</td>
                         <td class="col-num">${precoStr}</td>
@@ -194,6 +201,10 @@ function iniciarSincronizacaoEmTempoReal() {
                         <td class="col-anexos">${anexosVisual}</td>
                     </tr>
                 `;
+            });
+            tbody.querySelectorAll('tr').forEach((tr, indice) => {
+                const compra = romaneiosGlobais[indice];
+                if (compra) montarControleEtapa(tr.querySelector('.col-etapa-escritorio'), compra);
             });
             // Nome completo no tooltip, preenchido pelo DOM para não interpolar valores do banco em atributos
             tbody.querySelectorAll('.texto-cortado').forEach(el => { el.title = el.textContent; });
@@ -289,14 +300,14 @@ window.exportarExcelGeral = function() {
 
     let romaneiosExport = romaneiosGlobais.filter(r => selecionados.includes(r.id));
 
-    let csv = "ID Registro;Data Compra;Data Pagamento;Originador;Pecuarista;UF Origem;Cidade Origem;Fazenda Destino;Cidade Destino;UF Destino;Raça;Sexo;Cabeças;Peso Total (kg);Peso Médio (kg);Preço Unitário;Unidade Preço;Valor Total Gado;Corretor;Tipo Comissão;Base Comissão;Total Comissão;Observações\n";
+    let csv = "ID Registro;Data Compra;Data Pagamento;Originador;Pecuarista;UF Origem;Cidade Origem;Fazenda Destino;Cidade Destino;UF Destino;Raça;Sexo;Cabeças;Peso Total (kg);Peso Médio (kg);Preço Unitário;Unidade Preço;Valor Total Gado;Corretor;Tipo Comissão;Base Comissão;Total Comissão;Etapa Escritório;Responsável Escritório;Finalizado Por;Observações\n";
     
     romaneiosExport.forEach(r => {
         let dataF = r.dataCompra ? r.dataCompra.split('-').reverse().join('/') : '-';
         let dataP = r.dataPagamento ? r.dataPagamento.split('-').reverse().join('/') : '-';
         let obs = r.observacoes ? r.observacoes.replace(/\n/g, " ") : "-";
         
-        csv += `${r.id};${dataF};${dataP};${r.comprador};${r.pecuarista};${r.estado};${r.cidade};${r.fazendaDestino || '-'};${r.cidadeDestino || '-'};${r.ufDestino || '-'};${r.raca || '-'};${r.sexo || '-'};${r.cabecas};${r.pesoTotal};${r.pesoMedio || pesoMedio(r.cabecas, r.pesoTotal) || '-'};${r.precoUnitario || '-'};${r.unidadePreco || '-'};${r.valorTotalGado || '-'};${r.corretor || '-'};${r.tipoComissao || '-'};${r.valorComissao || '-'};${r.totalComissao || '-'};${obs}\n`;
+        csv += `${r.id};${dataF};${dataP};${r.comprador};${r.pecuarista};${r.estado};${r.cidade};${r.fazendaDestino || '-'};${r.cidadeDestino || '-'};${r.ufDestino || '-'};${r.raca || '-'};${r.sexo || '-'};${r.cabecas};${r.pesoTotal};${r.pesoMedio || pesoMedio(r.cabecas, r.pesoTotal) || '-'};${r.precoUnitario || '-'};${r.unidadePreco || '-'};${r.valorTotalGado || '-'};${r.corretor || '-'};${r.tipoComissao || '-'};${r.valorComissao || '-'};${r.totalComissao || '-'};${etapasEscritorio[etapaAtual(r)]?.nome || '-'};${r.responsavelEscritorio || '-'};${r.finalizadoPor || '-'};${obs}\n`;
     });
     baixarCSV(csv, "GVQ_Relatorio_Compras.csv");
 }
@@ -374,4 +385,83 @@ function sincronizarPesadores() {
             tdBotao.appendChild(btn); tr.appendChild(tdBotao); tbody.appendChild(tr);
         });
     }, error => alert('Não foi possível carregar as solicitações: ' + error.message));
+}
+
+function montarControleEtapa(td, compra) {
+    if (!td) return;
+    const anterior = etapaAtual(compra);
+    const select = document.createElement('select');
+    select.className = etapasEscritorio[anterior]?.classe || 'tag';
+    select.style.border = '0';
+    select.setAttribute('aria-label', 'Etapa da compra de ' + compra.pecuarista);
+    Object.entries(etapasEscritorio).forEach(([valor, etapa]) => {
+        const option = new Option(etapa.nome, valor);
+        option.disabled = valor !== anterior && !podeMudarEtapa(anterior, valor);
+        select.add(option);
+    });
+    select.value = anterior;
+    select.onchange = () => alterarEtapa(compra, select.value, select);
+    const historico = document.createElement('button'); historico.type = 'button';
+    historico.className = 'btn btn-fantasma btn-sm'; historico.textContent = 'Histórico';
+    historico.onclick = () => abrirHistoricoCompra(compra);
+    td.append(select, document.createTextNode(' '), historico);
+    const detalhe = document.createElement('div'); detalhe.className = 'texto-suave';
+    detalhe.textContent = anterior === 'finalizada'
+        ? (compra.finalizadoPor ? 'Concluída por ' + compra.finalizadoPor : '')
+        : anterior === 'em_andamento' ? (compra.responsavelEscritorio || '')
+        : Number(compra.revisaoValidada || 1) > 1 ? 'Nova revisão de documentos' : '';
+    if (detalhe.textContent) td.appendChild(detalhe);
+}
+async function alterarEtapa(compra, proxima, select) {
+    const anterior = etapaAtual(compra);
+    if (anterior === proxima) return;
+    select.disabled = true;
+    try {
+        if (!podeMudarEtapa(anterior, proxima)) throw new Error('Transição de etapa inválida.');
+        const referencia = doc(db, 'romaneios', compra.id);
+        const evento = doc(collection(db, 'romaneios', compra.id, 'historicoEscritorio'));
+        await runTransaction(db, async transacao => {
+            const snap = await transacao.get(referencia);
+            if (!snap.exists()) throw new Error('Compra não encontrada.');
+            const atual = snap.data();
+            if (atual.status && atual.status !== 'enviado_escritorio') throw new Error('A compra está aguardando revalidação do originador.');
+            if (etapaAtual(atual) !== anterior || (atual.revisaoValidada || 1) !== (compra.revisaoValidada || 1)) throw new Error('A compra foi atualizada. Confira a etapa atual e tente novamente.');
+            const alteracoes = { etapaEscritorio: proxima, etapaAtualizadaEm: serverTimestamp(),
+                etapaAtualizadaPorUid: usuarioEscritorio.uid, ultimoEventoEscritorio: evento.id };
+            if (proxima === 'em_andamento') Object.assign(alteracoes, { responsavelEscritorioUid: usuarioEscritorio.uid,
+                responsavelEscritorio: usuarioEscritorio.nome, finalizadoPorUid: null, finalizadoPor: null, finalizadoEm: null });
+            else Object.assign(alteracoes, { finalizadoPorUid: usuarioEscritorio.uid, finalizadoPor: usuarioEscritorio.nome, finalizadoEm: serverTimestamp() });
+            transacao.update(referencia, alteracoes);
+            transacao.set(evento, { tipo: 'etapa_escritorio', etapa: proxima, etapaAnterior: anterior,
+                usuarioUid: usuarioEscritorio.uid, usuario: usuarioEscritorio.nome, revisao: atual.revisaoValidada || 1, quando: serverTimestamp() });
+        });
+    } catch (error) { select.value = anterior; alert('Não foi possível alterar a etapa: ' + error.message); }
+    finally { select.disabled = false; }
+}
+function formatarQuando(valor) {
+    const data = valor?.toDate?.() || (valor?.seconds ? new Date(valor.seconds * 1000) : null);
+    return data ? data.toLocaleString('pt-BR') : '—';
+}
+function abrirHistoricoCompra(compra) {
+    window.mostrarTela('romaneios');
+    document.getElementById('tela-romaneios').style.display = 'none';
+    document.getElementById('tela-historico-compra').style.display = 'block';
+    document.getElementById('historico-compra-pecuarista').textContent = compra.pecuarista;
+    const tbody = document.getElementById('tbody-historico-compra');
+    tbody.innerHTML = '<tr><td colspan="4" class="celula-vazia">Carregando histórico...</td></tr>';
+    cancelarHistorico = sessao.observar(query(collection(db, 'romaneios', compra.id, 'historicoEscritorio'), orderBy('quando', 'desc')), snapshot => {
+        tbody.replaceChildren();
+        if (snapshot.empty) { tbody.innerHTML = '<tr><td colspan="4" class="celula-vazia">Nenhuma alteração registrada.</td></tr>'; return; }
+        snapshot.forEach(evento => {
+            const e = evento.data(), tr = document.createElement('tr');
+            const nome = etapasEscritorio[e.etapa]?.nome || e.etapa;
+            const alteracao = e.tipo === 'validacao_originador'
+                ? (Number(e.revisao) > 1 ? 'Recebida após revalidação' : 'Recebida do originador')
+                : `${etapasEscritorio[e.etapaAnterior]?.nome || '—'} → ${nome}`;
+            [formatarQuando(e.quando), alteracao, e.usuario, String(e.revisao || 1)].forEach(valor => {
+                const td = document.createElement('td'); td.textContent = valor || '—'; tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+    });
 }

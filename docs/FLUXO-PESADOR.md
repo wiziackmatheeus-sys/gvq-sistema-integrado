@@ -34,6 +34,16 @@ Cada validação verifica a revisão atual, evitando que um originador confirme 
 
 Arquivos antigos que eram guardados somente pelo nome não são recuperáveis por esta alteração. Os nomes são preservados e os arquivos podem ser anexados novamente pelo pesador.
 
+## Etapas do escritório
+
+A coluna **Etapa do escritório** usa as tags existentes como seletor. Toda compra validada pelo originador chega como **Recebida**. Ao selecionar **Em andamento**, a pessoa do escritório assume o atendimento e seu nome fica visível. Depois pode selecionar **Finalizada**, registrando quem finalizou e quando. Uma compra finalizada pode ser reaberta em **Em andamento**; quem reabre assume o atendimento. Não é permitido pular diretamente de Recebida para Finalizada.
+
+O botão **Histórico** mostra cada recebimento, início, finalização e reabertura, com responsável, data/hora e revisão. Os eventos ficam em `romaneios/{id}/historicoEscritorio` e não podem ser editados ou apagados pelo cliente. A alteração da etapa e seu evento são gravados juntos. A exportação geral inclui etapa, responsável e quem finalizou.
+
+Se o pesador anexar documentos depois de uma finalização, a compra fica aguardando revalidação e sai temporariamente da lista do escritório. O originador vê **Novos documentos** e **Revalidar**. Depois da confirmação, ela retorna ao escritório como **Recebida**, com **Nova revisão de documentos**. A finalização anterior permanece no histórico; a nova revisão precisa ser processada novamente. Registros antigos sem etapa aparecem como Recebida, sem inventar eventos anteriores.
+
+**Esta versão exige publicar novamente `firestore.rules` junto com os arquivos do app.** As regras antigas não autorizam as etapas e o histórico novos. Não houve alteração no banco de produção durante o desenvolvimento.
+
 ## Modelo de acesso
 
 `usuarios/{uid}` contém a aprovação e o vínculo do pesador. Somente o próprio usuário e o escritório leem o perfil; somente o escritório aprovado pode atribuir um originador ao pesador.

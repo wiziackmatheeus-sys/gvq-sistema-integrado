@@ -1,3 +1,4 @@
+import { podeMudarEtapa, etapaAtual } from '../js/etapas-escritorio.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dadosPesagem, pesoMedio, pesagemFoiAlterada, validarPesagem, validarNegociacao } from '../js/fluxo-compra.js';
@@ -52,4 +53,13 @@ test('registros antigos sem revisão continuam comparáveis sem ignorar mudança
     assert.equal(pesagemFoiAlterada(base, { ...base, revisao: 1 }), false);
     assert.equal(pesagemFoiAlterada(null, base), true);
     assert.equal(pesagemFoiAlterada(base, null), true);
+});
+
+test('etapas do escritório seguem Recebida, Em andamento, Finalizada e reabertura', () => {
+    assert.equal(etapaAtual({}), 'recebida');
+    assert.equal(podeMudarEtapa('recebida', 'em_andamento'), true);
+    assert.equal(podeMudarEtapa('em_andamento', 'finalizada'), true);
+    assert.equal(podeMudarEtapa('finalizada', 'em_andamento'), true);
+    assert.equal(podeMudarEtapa('recebida', 'finalizada'), false);
+    assert.equal(podeMudarEtapa('finalizada', 'recebida'), false);
 });

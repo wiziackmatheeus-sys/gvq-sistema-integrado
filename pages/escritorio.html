@@ -60,6 +60,7 @@
                                             <th>Data</th>
                                             <th>Pecuarista</th>
                                             <th>Originador</th>
+                                            <th>Etapa do escritório</th>
                                             <th class="col-num">Animais</th>
                                             <th class="col-num">Peso (kg)</th>
                                             <th class="col-num">Preço</th>
@@ -72,7 +73,7 @@
                                         </tr>
                                     </thead>
                                     <tbody id="tbody-romaneios">
-                                        <tr><td colspan="13" class="celula-vazia">Conectando ao banco de dados...</td></tr>
+                                        <tr><td colspan="14" class="celula-vazia">Conectando ao banco de dados...</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -88,6 +89,14 @@
                 <section id="tela-usuarios" class="tela" style="display: none;" aria-labelledby="titulo-usuarios">
                     <header class="pagina-cabecalho"><div><h1 class="pagina-titulo" id="titulo-usuarios">Pesadores</h1></div></header>
                     <section class="card card-tabela card-lista"><div class="tabela-wrap tabela-lista"><table><thead><tr><th>Pesador</th><th>Situação</th><th>Originador responsável</th><th>Ação</th></tr></thead><tbody id="tbody-usuarios"><tr><td colspan="4" class="celula-vazia">Carregando solicitações...</td></tr></tbody></table></div></section>
+                </section>
+
+                <section id="tela-historico-compra" class="tela" style="display: none;">
+                    <header class="pagina-cabecalho"><div><h1 class="pagina-titulo">Histórico da compra</h1></div><div class="pagina-acoes"><button type="button" class="btn btn-fantasma" onclick="mostrarTela('romaneios')">Voltar</button></div></header>
+                    <section class="card card-tabela card-lista">
+                        <div class="card-cabecalho"><h2 class="card-titulo" id="historico-compra-pecuarista"></h2></div>
+                        <div class="tabela-wrap tabela-lista"><table><thead><tr><th>Data e hora</th><th>Alteração</th><th>Responsável</th><th>Revisão</th></tr></thead><tbody id="tbody-historico-compra"><tr><td colspan="4" class="celula-vazia">Carregando histórico...</td></tr></tbody></table></div>
+                    </section>
                 </section>
 
                 <!-- Pecuaristas -->
