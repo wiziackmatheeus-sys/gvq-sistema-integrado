@@ -2,7 +2,7 @@ import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase
 import { signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { auth, db } from "./firebase.js";
 
-export const paginas = { comprador: 'painel.html', pesador: 'pesador.html', escritorio: 'escritorio.html' };
+export const paginas = { originador: 'painel.html', comprador: 'painel.html', pesador: 'pesador.html', escritorio: 'escritorio.html' };
 
 export async function exigirPerfil(user, perfis) {
     try {
@@ -14,11 +14,18 @@ export async function exigirPerfil(user, perfis) {
             window.location.href = '../index.html';
             return null;
         }
-        if (!perfis.includes(perfil.perfil)) {
+        if (perfil.perfil === 'pesador' && !perfil.compradorUid) {
+            alert('Aguarde o escritório aprovar seu cadastro e definir o originador responsável.');
+            await signOut(auth);
+            window.location.href = '../index.html';
+            return null;
+        }
+        const funcao = perfil.perfil === 'comprador' ? 'originador' : perfil.perfil;
+        if (!perfis.includes(funcao)) {
             window.location.href = paginas[perfil.perfil];
             return null;
         }
-        return { ...perfil, uid: user.uid };
+        return { ...perfil, perfil: funcao, uid: user.uid };
     } catch (error) {
         alert('Não foi possível verificar seu acesso. Tente entrar novamente.');
         window.location.href = '../index.html';

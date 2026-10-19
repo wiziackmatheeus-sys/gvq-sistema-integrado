@@ -6,17 +6,17 @@ Sistema unificado de Romaneio e Compras - GVQ
 ```
 index.html              Login e cadastro (fica na raiz: é a entrada do site)
 pages/
-  painel.html           Painel do Comprador (lançamento de romaneios)
+  painel.html           Painel do Originador (lançamento de romaneios)
   escritorio.html       Painel do Escritório (histórico, pecuaristas, destinos)
 css/
   base.css              Design system: cores, tipografia, botões, formulários, cards, tabelas e o layout dos painéis
   login.css             Estilos do index.html
-  painel.css            Estilos do painel do comprador
+  painel.css            Estilos do painel do originador
   escritorio.css        Estilos do painel do escritório
 js/
   firebase.js           Configuração e inicialização única do Firebase (app, auth, db)
   login.js              Lógica do index.html
-  painel.js             Lógica do painel do comprador
+  painel.js             Lógica do painel do originador
   escritorio.js         Lógica do painel do escritório
 assets/img/
   logo-gvq.png          Logo para fundo claro
@@ -58,5 +58,5 @@ e abra http://localhost:5500. A página recarrega sozinha quando um arquivo é s
 
 ## Perfis e encaminhamento
 
-O fluxo agora começa no **pesador**, passa pela conferência e negociação do **comprador** e termina no **escritório**. Instruções de implantação das regras, vínculo do histórico e testes: [docs/FLUXO-PESADOR.md](docs/FLUXO-PESADOR.md).
+O escritório aprova o pesador e define seu originador responsável. O fluxo começa no **pesador**, passa pela conferência e negociação do **originador** e termina no **escritório**. Instruções de implantação das regras, vínculo do histórico e testes: [docs/FLUXO-PESADOR.md](docs/FLUXO-PESADOR.md).
 

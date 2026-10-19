@@ -1,8 +1,8 @@
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
 import { exigirPerfil } from "./auth-guard.js";
-import { escapeHtml } from "./fluxo-compra.js";
+import { escapeHtml, pesoMedio } from "./fluxo-compra.js";
 
 let pecuaristasGlobais = [];
 let destinosGlobais = [];
@@ -27,6 +27,7 @@ onAuthStateChanged(auth, async (user) => {
         carregarEstadosIniciais();
         preencherListaBancos();
         iniciarSincronizacaoEmTempoReal();
+        sincronizarPesadores();
     } else {
         window.location.href = '../index.html';
     }
@@ -87,6 +88,7 @@ window.mostrarTela = function(telaId) {
     document.getElementById('tela-romaneios').style.display = 'none';
     document.getElementById('tela-pecuaristas').style.display = 'none';
     document.getElementById('tela-destinos').style.display = 'none';
+    document.getElementById('tela-usuarios').style.display = 'none';
     
     document.querySelectorAll('.aba-menu').forEach(b => { b.classList.remove('ativa'); b.removeAttribute('aria-current'); });
 
@@ -152,6 +154,8 @@ function iniciarSincronizacaoEmTempoReal() {
                 romaneiosGlobais.push(r);
             });
 
+            if (!romaneiosGlobais.length) tbody.innerHTML = '<tr><td colspan="13" class="celula-vazia">Nenhuma compra validada disponível.</td></tr>';
+            document.getElementById('chkAll').checked = false;
             romaneiosGlobais.sort((a, b) => (b.dataCompra || '').localeCompare(a.dataCompra || '')).forEach(r => {
                 let dataF = r.dataCompra ? r.dataCompra.split('-').reverse().join('/') : '-';
                 
@@ -199,7 +203,7 @@ function iniciarSincronizacaoEmTempoReal() {
 window.adicionarPecuarista = async function() {
     let nomeInput = document.getElementById('novo_pec_nome');
     let nome = nomeInput.value.trim();
-    if(!nome) return alert('Digite o nome do pecuarista.');
+    if (!validarCadastro('novo_pec_')) return;
     
     let btn = document.getElementById('btn-salvar-pec');
     btn.innerText = "Salvando...";
@@ -217,7 +221,7 @@ window.adicionarPecuarista = async function() {
             timestamp: serverTimestamp()
         });
         
-        document.querySelectorAll('.form-grid-4 input, .form-grid-4 select, .form-grid-3 input').forEach(i => i.value = '');
+        document.querySelectorAll('[id^="novo_pec_"]').forEach(i => i.value = '');
         document.getElementById('lista_cidades_pec').innerHTML = ''; 
         alert('Pecuarista cadastrado com sucesso!');
         
@@ -235,7 +239,7 @@ window.adicionarDestino = async function() {
     let uf = document.getElementById('novo_dest_uf').value;
     let cidade = document.getElementById('novo_dest_cidade').value.trim();
 
-    if(!nome || !uf || !cidade) return alert('Preencha o Nome, Estado e Cidade do destino.');
+    if (!validarCadastro('novo_dest_')) return;
     
     let btn = document.getElementById('btn-salvar-dest');
     btn.innerText = "Salvando...";
@@ -283,14 +287,14 @@ window.exportarExcelGeral = function() {
 
     let romaneiosExport = romaneiosGlobais.filter(r => selecionados.includes(r.id));
 
-    let csv = "ID Registro;Data Compra;Data Pagamento;Comprador;Pecuarista;UF Origem;Cidade Origem;Fazenda Destino;Cidade Destino;UF Destino;Raça;Sexo;Cabeças;Peso Total (kg);Preço Unitário;Unidade Preço;Valor Total Gado;Corretor;Tipo Comissão;Base Comissão;Total Comissão;Observações\n";
+    let csv = "ID Registro;Data Compra;Data Pagamento;Originador;Pecuarista;UF Origem;Cidade Origem;Fazenda Destino;Cidade Destino;UF Destino;Raça;Sexo;Cabeças;Peso Total (kg);Peso Médio (kg);Preço Unitário;Unidade Preço;Valor Total Gado;Corretor;Tipo Comissão;Base Comissão;Total Comissão;Observações\n";
     
     romaneiosExport.forEach(r => {
         let dataF = r.dataCompra ? r.dataCompra.split('-').reverse().join('/') : '-';
         let dataP = r.dataPagamento ? r.dataPagamento.split('-').reverse().join('/') : '-';
         let obs = r.observacoes ? r.observacoes.replace(/\n/g, " ") : "-";
         
-        csv += `${r.id};${dataF};${dataP};${r.comprador};${r.pecuarista};${r.estado};${r.cidade};${r.fazendaDestino || '-'};${r.cidadeDestino || '-'};${r.ufDestino || '-'};${r.raca || '-'};${r.sexo || '-'};${r.cabecas};${r.pesoTotal};${r.precoUnitario || '-'};${r.unidadePreco || '-'};${r.valorTotalGado || '-'};${r.corretor || '-'};${r.tipoComissao || '-'};${r.valorComissao || '-'};${r.totalComissao || '-'};${obs}\n`;
+        csv += `${r.id};${dataF};${dataP};${r.comprador};${r.pecuarista};${r.estado};${r.cidade};${r.fazendaDestino || '-'};${r.cidadeDestino || '-'};${r.ufDestino || '-'};${r.raca || '-'};${r.sexo || '-'};${r.cabecas};${r.pesoTotal};${r.pesoMedio || pesoMedio(r.cabecas, r.pesoTotal) || '-'};${r.precoUnitario || '-'};${r.unidadePreco || '-'};${r.valorTotalGado || '-'};${r.corretor || '-'};${r.tipoComissao || '-'};${r.valorComissao || '-'};${r.totalComissao || '-'};${obs}\n`;
     });
     baixarCSV(csv, "GVQ_Relatorio_Compras.csv");
 }
@@ -303,7 +307,7 @@ window.exportarExcelPesos = function() {
 
     let romaneiosExport = romaneiosGlobais.filter(r => selecionados.includes(r.id));
 
-    let csv = "ID Romaneio;Data Compra;Pecuarista;Comprador;Número do Animal;Peso (kg)\n";
+    let csv = "ID Romaneio;Data Compra;Pecuarista;Originador;Número do Animal;Peso (kg)\n";
     let temPesos = false;
     romaneiosExport.forEach(r => {
         let dataF = r.dataCompra ? r.dataCompra.split('-').reverse().join('/') : '-';
@@ -318,3 +322,54 @@ window.exportarExcelPesos = function() {
     baixarCSV(csv, "GVQ_Relatorio_Pesos.csv");
 }
 
+
+function validarCadastro(prefixo) {
+    for (const campo of document.querySelectorAll(`input[id^="${prefixo}"], select[id^="${prefixo}"]`)) {
+        campo.value = campo.value.trim();
+        if (!campo.reportValidity()) return false;
+    }
+    return true;
+}
+function sincronizarPesadores() {
+    onSnapshot(collection(db, 'usuarios'), snapshot => {
+        const usuarios = snapshot.docs.map(d => ({ ...d.data(), uid: d.id }));
+        const originadores = usuarios.filter(u => ['originador', 'comprador'].includes(u.perfil) && u.aprovado === true)
+            .sort((a, b) => a.nome.localeCompare(b.nome));
+        const pesadores = usuarios.filter(u => u.perfil === 'pesador').sort((a, b) =>
+            Number(Boolean(a.aprovado && a.compradorUid)) - Number(Boolean(b.aprovado && b.compradorUid)) || a.nome.localeCompare(b.nome));
+        const tbody = document.getElementById('tbody-usuarios'); tbody.replaceChildren();
+        if (!pesadores.length) tbody.innerHTML = '<tr><td colspan="4" class="celula-vazia">Nenhuma solicitação de pesador.</td></tr>';
+        pesadores.forEach(p => {
+            const tr = document.createElement('tr');
+            for (const texto of [p.nome, p.aprovado && p.compradorUid ? 'Aprovado' : 'Aguardando aprovação']) {
+                const td = document.createElement('td'); td.textContent = texto; tr.appendChild(td);
+            }
+            const tdSelect = document.createElement('td'); const select = document.createElement('select');
+            select.required = true; select.setAttribute('aria-label', 'Originador de ' + p.nome);
+            select.add(new Option('Selecione o originador...', ''));
+            originadores.forEach(o => select.add(new Option(o.nome, o.uid))); select.value = p.compradorUid || '';
+            const grupo = document.createElement('div'); grupo.className = 'form-group'; grupo.appendChild(select); tdSelect.appendChild(grupo); tr.appendChild(tdSelect);
+            const tdBotao = document.createElement('td'); const btn = document.createElement('button');
+            btn.type = 'button'; btn.className = 'btn btn-primario btn-sm';
+            btn.textContent = p.aprovado && p.compradorUid ? 'Atualizar vínculo' : 'Aprovar e vincular';
+            btn.onclick = async () => {
+                if (!select.reportValidity()) return;
+                btn.disabled = true;
+                try {
+                    await runTransaction(db, async transacao => {
+                        const destino = doc(db, 'usuarios', p.uid);
+                        const origem = doc(db, 'usuarios', select.value);
+                        const [pesador, originador] = await Promise.all([transacao.get(destino), transacao.get(origem)]);
+                        if (!pesador.exists() || pesador.data().perfil !== 'pesador' || !originador.exists() ||
+                            !['originador', 'comprador'].includes(originador.data().perfil) || originador.data().aprovado !== true) throw new Error('Pesador ou originador indisponível.');
+                        transacao.update(destino, { aprovado: true, compradorUid: origem.id, comprador: originador.data().nome,
+                            aprovadoPor: auth.currentUser.uid, aprovadoEm: serverTimestamp() });
+                    });
+                    alert('Pesador aprovado e vinculado ao originador.');
+                } catch (error) { alert('Não foi possível aprovar: ' + error.message); }
+                finally { btn.disabled = false; }
+            };
+            tdBotao.appendChild(btn); tr.appendChild(tdBotao); tbody.appendChild(tr);
+        });
+    }, error => alert('Não foi possível carregar as solicitações: ' + error.message));
+}

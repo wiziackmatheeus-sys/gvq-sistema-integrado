@@ -1,0 +1,31 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function usuario() { return firestore.get(/databases/(default)/documents/usuarios/$(request.auth.uid)).data; }
+    function perfil(nome) { return request.auth != null && usuario().perfil == nome && usuario().aprovado == true; }
+    function originador() { return request.auth != null && usuario().perfil in ['originador', 'comprador'] && usuario().aprovado == true; }
+    function existe(id) { return firestore.exists(/databases/(default)/documents/pesagens/$(id)); }
+    function pesagem(id) { return firestore.get(/databases/(default)/documents/pesagens/$(id)).data; }
+    function finalizado(id) { return existe(id) && pesagem(id).status == 'enviado_escritorio'; }
+    match /pesagens/{id}/{uid}/{arquivo} {
+      allow create: if resource == null && perfil('pesador') && request.auth.uid == uid && usuario().get('compradorUid', '') != ''
+        && request.resource.size <= 25 * 1024 * 1024 && (!existe(id) || pesagem(id).pesadorUid == uid);
+      allow read: if (perfil('pesador') && request.auth.uid == uid)
+        || (originador() && existe(id) && pesagem(id).compradorUid == request.auth.uid)
+        || (perfil('escritorio') && finalizado(id));
+      allow delete: if perfil('pesador') && request.auth.uid == uid
+        && (!existe(id) || !('pesagens/' + id + '/' + uid + '/' + arquivo in pesagem(id).get('anexosCaminhos', [])));
+      allow update: if false;
+    }
+    match /negociacoes/{id}/{uid}/{arquivo} {
+      allow create: if resource == null && originador() && request.auth.uid == uid && existe(id)
+        && pesagem(id).compradorUid == uid && pesagem(id).status == 'aguardando_comprador'
+        && request.resource.size <= 25 * 1024 * 1024;
+      allow read: if (originador() && request.auth.uid == uid) || (perfil('escritorio') && finalizado(id));
+      allow delete: if originador() && request.auth.uid == uid &&
+        (!firestore.exists(/databases/(default)/documents/romaneios/$(id)) ||
+        !('negociacoes/' + id + '/' + uid + '/' + arquivo in firestore.get(/databases/(default)/documents/romaneios/$(id)).data.get('anexosCaminhos', [])));
+      allow update: if false;
+    }
+  }
+}
