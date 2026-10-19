@@ -103,8 +103,10 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  assert.equal(await b.locator('#rom_valor_total').inputValue(),'R$\u00a07.806,00');
  assert.equal(await b.locator('#rom_total_comissao').inputValue(),'R$\u00a00,00');
  await b.locator('#rom_unidade_preco').selectOption('Por Arroba');await b.locator('#rom_preco').fill('300');
+ // A mesma pesagem pode chegar do Firestore com as chaves em outra ordem.
+ await b.evaluate(()=>{const p=window.__mock.data.pesagens.p1;window.__mock.data.pesagens.p1=Object.fromEntries(Object.entries(p).reverse())});
  await b.locator('#btn-registrar').click();await b.waitForTimeout(50);
- assert.equal(await b.evaluate(()=>window.__mock.data.romaneios.p1.valorTotalGado),'R$\u00a06.505,00');
+ assert.equal(await b.evaluate(()=>window.__mock.data.romaneios.p1?.valorTotalGado),'R$\u00a06.505,00', 'Balanção sem alterações deve validar mesmo com campos em outra ordem');
  assert.equal(await b.evaluate(()=>window.__mock.data.romaneios.p1.revisaoValidada),1);assert.deepEqual(be,[]);
  console.log('PASS: originador preenche os campos obrigatórios e valida o registro.');
  // Documento posterior retira a compra do escritório e preserva negociação anterior para revalidação.
@@ -125,6 +127,28 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  await br.locator('#btn-registrar').click();await br.waitForTimeout(40);
  assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.revisaoValidada),2);assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.anexosLinks.length),1);assert.deepEqual(bre,[]);
  console.log('PASS: complementação com upload simulado, bloqueio no escritório e revalidação sem perder negociação.');
+ // Timestamp técnico e ordem dos campos podem variar entre leitura normal e transação.
+ const {page:timestampPage,alerts:ta}=await pageFor('buyer1','pages/painel.html',1280,JSON.parse(JSON.stringify({ ...seed('buyer1').data,
+     pesagens:{p1:{...pending,tipoPesagem:'balancao',pesosIndividuais:[],timestamp:null}}
+ })));
+ await timestampPage.getByRole('button',{name:'Conferir',exact:true}).click();
+ await timestampPage.locator('#rom_preco').fill('12');await timestampPage.locator('#rom_corretor').fill('Sem corretor');
+ await timestampPage.evaluate(()=>window.__mock.data.pesagens.p1.timestamp={seconds:1792425600,nanoseconds:0});
+ await timestampPage.locator('#btn-registrar').click();await timestampPage.waitForTimeout(30);
+ assert.equal(await timestampPage.evaluate(()=>window.__mock.data.romaneios.p1.status),'enviado_escritorio');
+ assert.ok(!ta.some(a=>a.includes('atualizado')));
+ // Alteração real de peso ou revisão de documentos durante a conferência continua bloqueada.
+ for (const mudanca of [{pesoTotal:'700'}, {revisao:2}]) {
+  const {page:stale,alerts:sa}=await pageFor('buyer1','pages/painel.html');
+  await stale.getByRole('button',{name:'Conferir',exact:true}).click();
+  await stale.locator('#rom_preco').fill('12');await stale.locator('#rom_corretor').fill('Sem corretor');
+  await stale.evaluate(m=>Object.assign(window.__mock.data.pesagens.p1,m),mudanca);
+  await stale.locator('#btn-registrar').click();await stale.waitForTimeout(30);
+  assert.equal(await stale.evaluate(()=>window.__mock.writes.length),0);
+  assert.ok(sa.some(a=>a.includes('O registro foi atualizado')));
+  await stale.close();
+ }
+ console.log('PASS: balanção inalterado valida com chaves/timestamps diferentes; mudanças reais continuam bloqueadas.');
  // Falha de upload não cria registro nem declara sucesso.
  const {page:fail,alerts:fa}=await pageFor('weigher1','pages/pesador.html');await fillOperacional(fail);await fail.evaluate(()=>window.__mock.failUpload=true);
  await fail.locator('#input_arquivos').setInputFiles({name:'GTA.pdf',mimeType:'application/pdf',buffer:Buffer.from('teste')});await fail.locator('#btn-registrar').click();await fail.waitForTimeout(20);
