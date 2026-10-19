@@ -1,7 +1,8 @@
-import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { collection, addDoc, onSnapshot, query, where, orderBy, serverTimestamp, doc, runTransaction, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, runTransaction, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
 import { enviarAnexos, limparUploads, unirAnexos } from './anexos.js';
+import { criarControleSessao } from './sessao.js';
 import { exigirPerfil } from "./auth-guard.js";
 import { dadosPesagem, validarPesagem, validarNegociacao, pesoMedio, pesagemFoiAlterada, escapeHtml } from "./fluxo-compra.js";
 
@@ -23,11 +24,13 @@ let anexosExistentes = [];
 const textoEnviar = ehPesador ? 'Enviar ao originador' : 'Validar e enviar ao escritório';
 const valor = id => document.getElementById(id)?.value || '';
 const erroSincronizacao = error => alert('Não foi possível carregar os dados: ' + error.message);
+const sessao = criarControleSessao(erroSincronizacao);
 
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        usuarioAtual = await exigirPerfil(user, [ehPesador ? 'pesador' : 'originador']);
-        if (!usuarioAtual) return;
+        const sessaoValida = sessao.iniciar();
+        usuarioAtual = await exigirPerfil(user, [ehPesador ? 'pesador' : 'originador'], sessaoValida);
+        if (!usuarioAtual || !sessaoValida()) return;
         nomeCompradorLogado = usuarioAtual.nome;
         document.getElementById('nome-usuario').innerText = 'Olá, ' + nomeCompradorLogado.split(' ')[0];
         
@@ -45,12 +48,14 @@ onAuthStateChanged(auth, async (user) => {
             estados.forEach(e => ufSelect.innerHTML += `<option value="${e.sigla}">${e.nome}</option>`);
         } catch(e) { console.log('Erro IBGE'); }
 
+        if (!sessaoValida()) return;
         puxarPecuaristasDaNuvem();
         puxarDestinosDaNuvem(); 
         puxarHistoricoDaNuvem();
         if (ehPesador) document.getElementById('rom_originador').value = usuarioAtual.comprador;
         else { puxarPendentes(); window.mostrarPendentes(); }
     } else {
+        sessao.encerrar();
         window.location.href = '../index.html';
     }
 });
@@ -120,7 +125,7 @@ window.carregarCidades = async function() {
 
 function puxarDestinosDaNuvem() {
     const qDest = query(collection(db, "destinos"), orderBy("nome", "asc"));
-    onSnapshot(qDest, (snapshot) => {
+    sessao.observar(qDest, (snapshot) => {
         destinosGlobais = [];
         snapshot.forEach((doc) => { destinosGlobais.push(doc.data()); });
         document.getElementById('rom_fazenda_destino').placeholder = "Digite o nome da fazenda...";
@@ -141,7 +146,7 @@ window.preencherDestino = function() {
 
 function puxarPecuaristasDaNuvem() {
     const qPec = query(collection(db, "pecuaristas"), orderBy("nome", "asc"));
-    onSnapshot(qPec, (snapshot) => {
+    sessao.observar(qPec, (snapshot) => {
         pecuaristasGlobais = [];
         snapshot.forEach((doc) => { pecuaristasGlobais.push(doc.data()); });
         document.getElementById('rom_busca_pec').placeholder = "Digite o nome do pecuarista...";
@@ -197,7 +202,7 @@ function renderizarFilaArquivos() {
     });
 }
 
-window.sair = function() { signOut(auth).then(() => { localStorage.clear(); window.location.href = '../index.html'; }); }
+window.sair = sessao.sair;
 
 window.verificarRacaOutra = function() {
     let select = document.getElementById('rom_raca');
@@ -434,7 +439,7 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
 
 function puxarPendentes() {
     const q = query(collection(db, 'pesagens'), where('compradorUid', '==', usuarioAtual.uid));
-    onSnapshot(q, snapshot => {
+    sessao.observar(q, snapshot => {
         pesagensPendentes = snapshot.docs.map(d => ({ ...d.data(), id: d.id }))
             .filter(p => p.status === 'aguardando_comprador')
             .sort((a, b) => (b.dataCompra || '').localeCompare(a.dataCompra || ''));
@@ -507,7 +512,7 @@ function puxarHistoricoDaNuvem() {
     const q = ehPesador
         ? query(collection(db, 'pesagens'), where('pesadorUid', '==', usuarioAtual.uid))
         : query(collection(db, 'romaneios'), where('compradorUid', '==', usuarioAtual.uid));
-    onSnapshot(q, snapshot => {
+    sessao.observar(q, snapshot => {
         historicoDesteComprador = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
         historicoDesteComprador.sort((a, b) => (b.dataCompra || '').localeCompare(a.dataCompra || ''));
         window.filtrarHistorico();
