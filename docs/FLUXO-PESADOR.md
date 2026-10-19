@@ -2,7 +2,9 @@
 
 ## Cadastro e aprovação
 
-O pesador se cadastra normalmente e aguarda aprovação. No painel do escritório, **Pesadores** mostra as solicitações pendentes. O escritório seleciona o originador responsável e clica em **Aprovar e vincular**. A aprovação e o vínculo são gravados juntos; não é possível aprovar sem um originador válido. Contas de escritório continuam exigindo aprovação administrativa no Firebase.
+O escritório também pode criar contas já aprovadas/vinculadas e redefinir senhas pela aba **Usuários**, com senha temporária e troca obrigatória. Esse recurso exige publicar as Cloud Functions e as novas regras Firestore/Storage. Ver [contas administrativas](CONTAS-ADMIN.md).
+
+O pesador se cadastra normalmente e aguarda aprovação. No painel do escritório, **Usuários** mostra as solicitações pendentes. O escritório seleciona o originador responsável e clica em **Aprovar e vincular**. A aprovação e o vínculo são gravados juntos; não é possível aprovar sem um originador válido. Contas de escritório continuam exigindo aprovação administrativa no Firebase.
 
 Pesadores aprovados visualizam apenas o nome do originador designado. Não consultam a lista de usuários nem escolhem outro responsável. O vínculo pode ser atualizado pelo escritório; registros já enviados continuam com o originador original e somente os novos registros usam o novo vínculo.
 
@@ -74,7 +76,7 @@ No Storage, `pesagens/{id}/{pesadorUid}/{arquivo}` guarda os documentos operacio
 
 1. Fazer backup dos dados e das regras atuais de Firestore/Storage. As regras publicadas no projeto não estão acessíveis por este repositório; comparar antes de aplicar para preservar permissões de outras aplicações ou coleções.
 2. **Ativar/configurar o bucket Firebase Storage do projeto** antes de testar arquivos em produção. Confirmar os requisitos de faturamento no console. Na primeira publicação de regras do Storage com consulta ao Firestore, autorizar a permissão entre serviços solicitada pelo Firebase. Esta mudança não altera automaticamente o console nem o faturamento.
-3. Garantir que originadores existentes possuem `aprovado: true` e que o escritório possui uma conta aprovada. Vincular os pesadores pela aba Pesadores.
+3. Garantir que originadores existentes possuem `aprovado: true` e que o escritório possui uma conta aprovada. Vincular os pesadores pela aba Usuários.
 4. Romaneios antigos sem `compradorUid` continuam no escritório; para voltarem ao histórico individual, revisar o vínculo por UID. Há simulação administrativa:
 
    ```sh

@@ -68,3 +68,13 @@ test('documentos já vinculados são imutáveis; uploads órfãos permitem limpe
     await uploadBytes(ref(d('weigher1'), orphan), file);
     await assertSucceeds(deleteObject(ref(d('weigher1'), orphan)));
 });
+
+test('troca obrigatória e sessão revogada também bloqueiam arquivos', async () => {
+    const path='pesagens/p1/weigher1/GTA';await uploadBytes(ref(d('weigher1'),path),file);
+    await env.withSecurityRulesDisabled(async c => updateDoc(doc(c.firestore(),'usuarios','weigher1'),{trocaSenhaObrigatoria:true}));
+    await assertFails(getBytes(ref(d('weigher1'),path)));
+    await assertFails(uploadBytes(ref(d('weigher1'),'pesagens/p1/weigher1/novo'),file));
+    await env.withSecurityRulesDisabled(async c => updateDoc(doc(c.firestore(),'usuarios','weigher1'),{trocaSenhaObrigatoria:false,sessaoRevogadaEm:1000}));
+    await assertFails(getBytes(ref(env.authenticatedContext('weigher1',{auth_time:1000}).storage(),path)));
+    await assertSucceeds(getBytes(ref(env.authenticatedContext('weigher1',{auth_time:1001}).storage(),path)));
+});

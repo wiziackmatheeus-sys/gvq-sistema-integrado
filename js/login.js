@@ -107,6 +107,8 @@ document.getElementById('form-login').addEventListener('submit', async (e) => {
                 return;
             }
 
+            if (userData.trocaSenhaObrigatoria) { window.location.href = 'pages/trocar-senha.html'; return; }
+
             localStorage.setItem('gvq_sistema_logado', userData.nome);
             localStorage.setItem('gvq_sistema_perfil', userData.perfil);
 

@@ -2,8 +2,10 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     function usuario() { return firestore.get(/databases/(default)/documents/usuarios/$(request.auth.uid)).data; }
-    function perfil(nome) { return request.auth != null && usuario().perfil == nome && usuario().aprovado == true; }
-    function originador() { return request.auth != null && usuario().perfil in ['originador', 'comprador'] && usuario().aprovado == true; }
+    function perfil(nome) { return request.auth != null && usuario().perfil == nome && usuario().aprovado == true && usuario().get('trocaSenhaObrigatoria', false) == false
+        && (!('sessaoRevogadaEm' in usuario()) || request.auth.token.get('auth_time', 0) > usuario().sessaoRevogadaEm); }
+    function originador() { return request.auth != null && usuario().perfil in ['originador', 'comprador'] && usuario().aprovado == true && usuario().get('trocaSenhaObrigatoria', false) == false
+        && (!('sessaoRevogadaEm' in usuario()) || request.auth.token.get('auth_time', 0) > usuario().sessaoRevogadaEm); }
     function existe(id) { return firestore.exists(/databases/(default)/documents/pesagens/$(id)); }
     function pesagem(id) { return firestore.get(/databases/(default)/documents/pesagens/$(id)).data; }
     function finalizado(id) { return existe(id) && pesagem(id).status == 'enviado_escritorio'; }

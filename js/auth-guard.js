@@ -9,6 +9,7 @@ export async function exigirPerfil(user, perfis, sessaoValida = () => true) {
         const snap = await getDoc(doc(db, 'usuarios', user.uid));
         if (!sessaoValida()) return null;
         const perfil = snap.exists() ? snap.data() : null;
+        if (perfil?.trocaSenhaObrigatoria) { window.location.href = 'trocar-senha.html'; return null; }
         if (!perfil || !paginas[perfil.perfil] || perfil.aprovado !== true) {
             alert('Perfil não encontrado ou aguardando aprovação.');
             await signOut(auth);

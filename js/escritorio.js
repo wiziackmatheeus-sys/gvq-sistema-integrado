@@ -1,3 +1,5 @@
+import { atualizarUsuarios, limparCredenciais } from './usuarios-escritorio.js';
+import { compararNomes, aplicarBuscaTabela } from './buscas.js';
 import { filtrarCompras } from './filtros-compras.js';
 import { tiposDocumento, categoriaDocumento } from './documentos.js';
 import { codigoDaCompra } from './codigo-compra.js';
@@ -51,7 +53,7 @@ async function carregarEstadosIniciais() {
         let ufSelectPec = document.getElementById('novo_pec_uf');
         let ufSelectDest = document.getElementById('novo_dest_uf');
         
-        estados.forEach(e => {
+        estados.sort((a,b) => compararNomes(a.sigla,b.sigla)).forEach(e => {
             let option = `<option value="${e.sigla}">${e.nome}</option>`;
             ufSelectPec.innerHTML += option;
             ufSelectDest.innerHTML += option;
@@ -61,7 +63,7 @@ async function carregarEstadosIniciais() {
 
 function preencherListaBancos() {
     let dataList = document.getElementById('lista_bancos');
-    bancosBrasileiros.forEach(banco => {
+    bancosBrasileiros.sort(compararNomes).forEach(banco => {
         dataList.innerHTML += `<option value="${banco}">`;
     });
 }
@@ -77,7 +79,7 @@ window.carregarCidades = async function(idUf, idDataList, idInputCidade) {
         let res = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios`);
         let cidades = await res.json();
         inputCidade.placeholder = 'Digite e selecione a cidade...';
-        cidades.forEach(c => dataList.innerHTML += `<option value="${c.nome}">`);
+        cidades.sort((a,b) => compararNomes(a.nome,b.nome)).forEach(c => dataList.innerHTML += `<option value="${c.nome}">`);
     } catch(e) { inputCidade.placeholder = 'Erro ao carregar cidades'; }
 }
 
@@ -96,6 +98,7 @@ window.validarSelecaoDaLista = function(inputElement, dataListId) {
 }
 
 window.mostrarTela = function(telaId) {
+    limparCredenciais();
     cancelarHistorico?.(); cancelarHistorico = null;
     document.getElementById('tela-historico-compra').style.display = 'none';
     document.getElementById('tela-romaneios').style.display = 'none';
@@ -110,7 +113,7 @@ window.mostrarTela = function(telaId) {
     document.getElementById(`btn-tab-${telaId}`).setAttribute('aria-current', 'page');
 }
 
-window.sair = sessao.sair;
+window.sair = async () => { limparCredenciais(); await sessao.sair(); };
 
 function iniciarSincronizacaoEmTempoReal() {
     const qPec = query(collection(db, "pecuaristas"), orderBy("nome", "asc"));
@@ -122,13 +125,15 @@ function iniciarSincronizacaoEmTempoReal() {
         if(snapshot.empty) {
             tbody.innerHTML = '<tr><td colspan="6" class="celula-vazia">Nenhum pecuarista no banco de dados.</td></tr>';
         } else {
-            snapshot.forEach((doc) => {
+            [...snapshot.docs].sort((a,b) => compararNomes(a.data().nome,b.data().nome)).forEach((doc) => {
                 let p = doc.data();
                 pecuaristasGlobais.push(p);
                 let localF = (p.cidade && p.estado) ? `${p.cidade} - ${p.estado}` : '-';
                 tbody.innerHTML += `<tr><td><strong>${escapeHtml(p.nome)}</strong></td><td class="col-doc">${escapeHtml(p.documento || '-')}</td><td class="col-local">${escapeHtml(localF)}</td><td>${escapeHtml(p.banco || '-')}</td><td class="col-doc">${escapeHtml(p.agencia || '-')}</td><td class="col-doc">${escapeHtml(p.conta || '-')}</td></tr>`;
             });
         }
+        tbody.querySelectorAll('tr').forEach(tr => { tr.dataset.busca = tr.textContent; });
+        aplicarBuscaTabela('tbody-pecuaristas', document.getElementById('busca-pecuaristas').value);
     });
 
     const qDest = query(collection(db, "destinos"), orderBy("nome", "asc"));
@@ -140,13 +145,15 @@ function iniciarSincronizacaoEmTempoReal() {
         if(snapshot.empty) {
             tbody.innerHTML = '<tr><td colspan="2" class="celula-vazia">Nenhuma fazenda destino cadastrada.</td></tr>';
         } else {
-            snapshot.forEach((doc) => {
+            [...snapshot.docs].sort((a,b) => compararNomes(a.data().nome,b.data().nome)).forEach((doc) => {
                 let d = doc.data();
                 destinosGlobais.push(d);
                 let localF = (d.cidade && d.estado) ? `${d.cidade} - ${d.estado}` : '-';
                 tbody.innerHTML += `<tr><td><strong>${escapeHtml(d.nome)}</strong></td><td class="col-local">${escapeHtml(localF)}</td></tr>`;
             });
         }
+        tbody.querySelectorAll('tr').forEach(tr => { tr.dataset.busca = tr.textContent; });
+        aplicarBuscaTabela('tbody-destinos', document.getElementById('busca-destinos').value);
     });
 
     const qRom = query(collection(db, 'romaneios'));
@@ -172,7 +179,7 @@ function atualizarOpcoesFiltros() {
     });
 }
 function renderizarCompras() {
-    const filtros = Object.fromEntries(['codigo','fazenda','originador','etapa','mes'].map(campo => [campo, document.getElementById('filtro-' + campo).value]));
+    const filtros = Object.fromEntries(['codigo','texto','fazenda','originador','etapa','mes'].map(campo => [campo, document.getElementById('filtro-' + campo).value]));
     const visiveis = filtrarCompras(romaneiosGlobais, filtros);
     const tbody = document.getElementById('tbody-romaneios'); tbody.replaceChildren();
     document.getElementById('resultado-filtros').textContent = `${visiveis.length} de ${romaneiosGlobais.length} compras`;
@@ -233,11 +240,11 @@ function resumoDocumentos(compra) {
         return `<div><strong>${nome}</strong><br>${links || '<span class="texto-suave">Não anexado (opcional)</span>'}</div>`;
     }).join('') + '</details>';
 }
-['codigo','fazenda','originador','etapa','mes'].forEach(campo => {
-    document.getElementById('filtro-' + campo).addEventListener(campo === 'codigo' ? 'input' : 'change', renderizarCompras);
+['codigo','texto','fazenda','originador','etapa','mes'].forEach(campo => {
+    document.getElementById('filtro-' + campo).addEventListener(['codigo','texto'].includes(campo) ? 'input' : 'change', renderizarCompras);
 });
 document.getElementById('limpar-filtros').addEventListener('click', () => {
-    ['codigo','fazenda','originador','etapa','mes'].forEach(campo => { document.getElementById('filtro-' + campo).value = ''; });
+    ['codigo','texto','fazenda','originador','etapa','mes'].forEach(campo => { document.getElementById('filtro-' + campo).value = ''; });
     renderizarCompras();
 });
 
@@ -372,47 +379,7 @@ function validarCadastro(prefixo) {
     return true;
 }
 function sincronizarPesadores() {
-    sessao.observar(collection(db, 'usuarios'), snapshot => {
-        const usuarios = snapshot.docs.map(d => ({ ...d.data(), uid: d.id }));
-        const originadores = usuarios.filter(u => ['originador', 'comprador'].includes(u.perfil) && u.aprovado === true)
-            .sort((a, b) => a.nome.localeCompare(b.nome));
-        const pesadores = usuarios.filter(u => u.perfil === 'pesador').sort((a, b) =>
-            Number(Boolean(a.aprovado && a.compradorUid)) - Number(Boolean(b.aprovado && b.compradorUid)) || a.nome.localeCompare(b.nome));
-        const tbody = document.getElementById('tbody-usuarios'); tbody.replaceChildren();
-        if (!pesadores.length) tbody.innerHTML = '<tr><td colspan="4" class="celula-vazia">Nenhuma solicitação de pesador.</td></tr>';
-        pesadores.forEach(p => {
-            const tr = document.createElement('tr');
-            for (const texto of [p.nome, p.aprovado && p.compradorUid ? 'Aprovado' : 'Aguardando aprovação']) {
-                const td = document.createElement('td'); td.textContent = texto; tr.appendChild(td);
-            }
-            const tdSelect = document.createElement('td'); const select = document.createElement('select');
-            select.required = true; select.setAttribute('aria-label', 'Originador de ' + p.nome);
-            select.add(new Option('Selecione o originador...', ''));
-            originadores.forEach(o => select.add(new Option(o.nome, o.uid))); select.value = p.compradorUid || '';
-            const grupo = document.createElement('div'); grupo.className = 'form-group'; grupo.appendChild(select); tdSelect.appendChild(grupo); tr.appendChild(tdSelect);
-            const tdBotao = document.createElement('td'); const btn = document.createElement('button');
-            btn.type = 'button'; btn.className = 'btn btn-primario btn-sm';
-            btn.textContent = p.aprovado && p.compradorUid ? 'Atualizar vínculo' : 'Aprovar e vincular';
-            btn.onclick = async () => {
-                if (!select.reportValidity()) return;
-                btn.disabled = true;
-                try {
-                    await runTransaction(db, async transacao => {
-                        const destino = doc(db, 'usuarios', p.uid);
-                        const origem = doc(db, 'usuarios', select.value);
-                        const [pesador, originador] = await Promise.all([transacao.get(destino), transacao.get(origem)]);
-                        if (!pesador.exists() || pesador.data().perfil !== 'pesador' || !originador.exists() ||
-                            !['originador', 'comprador'].includes(originador.data().perfil) || originador.data().aprovado !== true) throw new Error('Pesador ou originador indisponível.');
-                        transacao.update(destino, { aprovado: true, compradorUid: origem.id, comprador: originador.data().nome,
-                            aprovadoPor: auth.currentUser.uid, aprovadoEm: serverTimestamp() });
-                    });
-                    alert('Pesador aprovado e vinculado ao originador.');
-                } catch (error) { alert('Não foi possível aprovar: ' + error.message); }
-                finally { btn.disabled = false; }
-            };
-            tdBotao.appendChild(btn); tr.appendChild(tdBotao); tbody.appendChild(tr);
-        });
-    }, error => alert('Não foi possível carregar as solicitações: ' + error.message));
+    sessao.observar(collection(db,'usuarios'), snapshot => atualizarUsuarios(snapshot.docs.map(d => ({...d.data(),uid:d.id}))), error => alert('Não foi possível carregar usuários: ' + error.message));
 }
 
 function montarControleEtapa(td, compra) {
@@ -493,3 +460,5 @@ function abrirHistoricoCompra(compra) {
         });
     });
 }
+
+['pecuaristas','destinos'].forEach(tipo => document.getElementById('busca-' + tipo).addEventListener('input',event => aplicarBuscaTabela('tbody-' + tipo,event.target.value)));
