@@ -1,3 +1,4 @@
+import { codigoDaCompra } from './codigo-compra.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { collection, addDoc, query, orderBy, serverTimestamp, doc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
@@ -187,7 +188,7 @@ function iniciarSincronizacaoEmTempoReal() {
                     <tr>
                         <td class="col-chk"><input type="checkbox" class="chk-export" value="${escapeHtml(r.id)}" aria-label="Selecionar registro"></td>
                         <td class="col-data"><strong>${escapeHtml(dataF)}</strong></td>
-                        <td class="col-destaque"><span class="texto-cortado">${escapeHtml(r.pecuarista)}</span></td>
+                        <td class="col-destaque"><span class="texto-cortado">${escapeHtml(r.pecuarista)}</span><span class="texto-cortado texto-suave codigo-compra">${escapeHtml(codigoDaCompra(r))}</span></td>
                         <td>${escapeHtml((r.comprador || '').split(' ')[0])}</td>
                         <td class="col-etapa-escritorio"></td>
                         <td class="col-num"><strong>${escapeHtml(r.cabecas)}</strong></td>
@@ -300,14 +301,14 @@ window.exportarExcelGeral = function() {
 
     let romaneiosExport = romaneiosGlobais.filter(r => selecionados.includes(r.id));
 
-    let csv = "ID Registro;Data Compra;Data Pagamento;Originador;Pecuarista;UF Origem;Cidade Origem;Fazenda Destino;Cidade Destino;UF Destino;Raça;Sexo;Cabeças;Peso Total (kg);Peso Médio (kg);Preço Unitário;Unidade Preço;Valor Total Gado;Corretor;Tipo Comissão;Base Comissão;Total Comissão;Etapa Escritório;Responsável Escritório;Finalizado Por;Observações\n";
+    let csv = "Ordem de Compra;ID Registro;Data Compra;Data Pagamento;Originador;Pecuarista;UF Origem;Cidade Origem;Fazenda Destino;Cidade Destino;UF Destino;Raça;Sexo;Cabeças;Peso Total (kg);Peso Médio (kg);Preço Unitário;Unidade Preço;Valor Total Gado;Corretor;Tipo Comissão;Base Comissão;Total Comissão;Etapa Escritório;Responsável Escritório;Finalizado Por;Observações\n";
     
     romaneiosExport.forEach(r => {
         let dataF = r.dataCompra ? r.dataCompra.split('-').reverse().join('/') : '-';
         let dataP = r.dataPagamento ? r.dataPagamento.split('-').reverse().join('/') : '-';
         let obs = r.observacoes ? r.observacoes.replace(/\n/g, " ") : "-";
         
-        csv += `${r.id};${dataF};${dataP};${r.comprador};${r.pecuarista};${r.estado};${r.cidade};${r.fazendaDestino || '-'};${r.cidadeDestino || '-'};${r.ufDestino || '-'};${r.raca || '-'};${r.sexo || '-'};${r.cabecas};${r.pesoTotal};${r.pesoMedio || pesoMedio(r.cabecas, r.pesoTotal) || '-'};${r.precoUnitario || '-'};${r.unidadePreco || '-'};${r.valorTotalGado || '-'};${r.corretor || '-'};${r.tipoComissao || '-'};${r.valorComissao || '-'};${r.totalComissao || '-'};${etapasEscritorio[etapaAtual(r)]?.nome || '-'};${r.responsavelEscritorio || '-'};${r.finalizadoPor || '-'};${obs}\n`;
+        csv += `${codigoDaCompra(r)};${r.id};${dataF};${dataP};${r.comprador};${r.pecuarista};${r.estado};${r.cidade};${r.fazendaDestino || '-'};${r.cidadeDestino || '-'};${r.ufDestino || '-'};${r.raca || '-'};${r.sexo || '-'};${r.cabecas};${r.pesoTotal};${r.pesoMedio || pesoMedio(r.cabecas, r.pesoTotal) || '-'};${r.precoUnitario || '-'};${r.unidadePreco || '-'};${r.valorTotalGado || '-'};${r.corretor || '-'};${r.tipoComissao || '-'};${r.valorComissao || '-'};${r.totalComissao || '-'};${etapasEscritorio[etapaAtual(r)]?.nome || '-'};${r.responsavelEscritorio || '-'};${r.finalizadoPor || '-'};${obs}\n`;
     });
     baixarCSV(csv, "GVQ_Relatorio_Compras.csv");
 }
@@ -320,14 +321,14 @@ window.exportarExcelPesos = function() {
 
     let romaneiosExport = romaneiosGlobais.filter(r => selecionados.includes(r.id));
 
-    let csv = "ID Romaneio;Data Compra;Pecuarista;Originador;Número do Animal;Peso (kg)\n";
+    let csv = "Ordem de Compra;ID Romaneio;Data Compra;Pecuarista;Originador;Número do Animal;Peso (kg)\n";
     let temPesos = false;
     romaneiosExport.forEach(r => {
         let dataF = r.dataCompra ? r.dataCompra.split('-').reverse().join('/') : '-';
         if(r.pesosIndividuais && r.pesosIndividuais.length > 0) {
             temPesos = true;
             r.pesosIndividuais.forEach((peso, index) => {
-                csv += `${r.id};${dataF};${r.pecuarista};${r.comprador};Animal ${index + 1};${peso}\n`;
+                csv += `${codigoDaCompra(r)};${r.id};${dataF};${r.pecuarista};${r.comprador};Animal ${index + 1};${peso}\n`;
             });
         }
     });
@@ -446,7 +447,7 @@ function abrirHistoricoCompra(compra) {
     window.mostrarTela('romaneios');
     document.getElementById('tela-romaneios').style.display = 'none';
     document.getElementById('tela-historico-compra').style.display = 'block';
-    document.getElementById('historico-compra-pecuarista').textContent = compra.pecuarista;
+    document.getElementById('historico-compra-pecuarista').textContent = compra.pecuarista + ' — ' + codigoDaCompra(compra);
     const tbody = document.getElementById('tbody-historico-compra');
     tbody.innerHTML = '<tr><td colspan="4" class="celula-vazia">Carregando histórico...</td></tr>';
     cancelarHistorico = sessao.observar(query(collection(db, 'romaneios', compra.id, 'historicoEscritorio'), orderBy('quando', 'desc')), snapshot => {

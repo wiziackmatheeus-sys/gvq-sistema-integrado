@@ -78,6 +78,10 @@ service cloud.firestore {
         && d.pesadorUid == p.pesadorUid && d.pesador == p.pesador
         && d.revisaoValidada == p.get('revisao', 1)
         && d.status == 'enviado_escritorio' && d.validadoEm == request.time && d.timestamp == request.time
+        && d.codigoCompra is string && d.codigoCompra.size() <= 140
+        && d.codigoCompra.matches('OC-[A-Z0-9-]+-[0-9]{6}-' + id)
+        && (!exists(/databases/$(database)/documents/romaneios/$(id))
+          || !('codigoCompra' in resource.data) || d.codigoCompra == resource.data.codigoCompra)
         && recepcaoValida(id)
         && depois.status == 'enviado_escritorio' && depois.validadoEm == request.time
         && operacionaisValidos(d)

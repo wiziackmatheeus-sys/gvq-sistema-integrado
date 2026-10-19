@@ -6,7 +6,7 @@ setLogLevel('silent');
 let env;
 export const user = (nome, perfil, aprovado = true, campos = {}) => ({ nome, perfil, aprovado, login: nome.toLowerCase(), ...campos });
 export const pesagem = () => ({ estado: 'SP', cidade: 'Barretos', fazendaDestino: 'Fazenda', cidadeDestino: 'Ibitinga', ufDestino: 'SP', pecuarista: 'João', pecuaristaDocumento: '123', pecuaristaBanco: 'Banco', pecuaristaAgencia: '1', pecuaristaConta: '2', dataCompra: '2026-10-19', dataPagamento: '2026-10-23', cabecas: '2', pesoTotal: '650.50', pesoMedio: '325.25', tipoPesagem: 'individual', sexo: 'Macho', raca: 'F1 Angus', pesosIndividuais: [300, 350.5], observacoes: '', anexos: [], anexosLinks: [], anexosCaminhos: [], compradorUid: 'buyer1', comprador: 'Ana', pesadorUid: 'weigher1', pesador: 'Paulo', revisao: 1, status: 'aguardando_comprador', timestamp: serverTimestamp() });
-export const financeiro = (revisao = 1, evento = "validacao") => ({ ...pesagem(), precoUnitario: '300', unidadePreco: 'Por Arroba', valorTotalGado: 'R$ 6.505,00', tipoComissao: 'Nenhuma', valorComissao: '0', totalComissao: 'R$ 0,00', corretor: 'Sem corretor', pesagemId: 'p1', revisaoValidada: revisao, etapaEscritorio: 'recebida', responsavelEscritorioUid: null, responsavelEscritorio: null, finalizadoPorUid: null, finalizadoPor: null, finalizadoEm: null, etapaAtualizadaPorUid: 'buyer1', etapaAtualizadaEm: serverTimestamp(), ultimoEventoEscritorio: evento, status: 'enviado_escritorio', validadoEm: serverTimestamp() });
+export const financeiro = (revisao = 1, evento = "validacao") => ({ ...pesagem(), precoUnitario: '300', unidadePreco: 'Por Arroba', valorTotalGado: 'R$ 6.505,00', tipoComissao: 'Nenhuma', valorComissao: '0', totalComissao: 'R$ 0,00', corretor: 'Sem corretor', pesagemId: 'p1', codigoCompra: 'OC-FAZENDA-202610-p1', revisaoValidada: revisao, etapaEscritorio: 'recebida', responsavelEscritorioUid: null, responsavelEscritorio: null, finalizadoPorUid: null, finalizadoPor: null, finalizadoEm: null, etapaAtualizadaPorUid: 'buyer1', etapaAtualizadaEm: serverTimestamp(), ultimoEventoEscritorio: evento, status: 'enviado_escritorio', validadoEm: serverTimestamp() });
 const db = uid => env.authenticatedContext(uid).firestore();
 before(async () => { env = await initializeTestEnvironment({ projectId: 'demo-gvq-tests', firestore: { rules: readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8') } }); });
 after(async () => { await env?.cleanup(); });
@@ -176,4 +176,18 @@ test('documento após Finalizada exige revalidação e retorna Recebida preserva
     if (p.etapaEscritorio !== 'recebida' || p.finalizadoPorUid !== null || p.revisaoValidada !== 2) throw new Error('Nova revisão não foi recebida corretamente');
     const eventos = await getDocs(collection(db('office1'), 'romaneios', 'p1', 'historicoEscritorio'));
     if (eventos.size !== 4) throw new Error('Histórico da finalização anterior foi perdido');
+});
+
+test('código da compra é obrigatório e permanece imutável na revalidação e no escritório', async () => {
+    await validar();
+    await assertFails(updateDoc(doc(db('office1'), 'romaneios', 'p1'), { codigoCompra: 'OC-OUTRA-202610-p1' }));
+    await complemento(db('weigher1'));
+    const d = db('buyer1'), b = writeBatch(d), evento = doc(collection(d, 'romaneios', 'p1', 'historicoEscritorio'));
+    b.set(doc(d, 'romaneios', 'p1'), { ...financeiro(2, evento.id), codigoCompra: 'OC-OUTRA-202610-p1' });
+    b.set(evento, { tipo: 'validacao_originador', etapa: 'recebida', etapaAnterior: null, usuarioUid: 'buyer1', usuario: 'Ana', revisao: 2, quando: serverTimestamp() });
+    b.update(doc(d, 'pesagens', 'p1'), { status: 'enviado_escritorio', validadoEm: serverTimestamp() });
+    await assertFails(b.commit());
+    await assertSucceeds(validar(2));
+    const compra = (await getDoc(doc(d, 'romaneios', 'p1'))).data();
+    if (compra.codigoCompra !== 'OC-FAZENDA-202610-p1') throw new Error('Código alterado');
 });

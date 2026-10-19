@@ -114,7 +114,26 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  await b.locator('#btn-registrar').click();await b.waitForTimeout(50);
  assert.equal(await b.evaluate(()=>window.__mock.data.romaneios.p1?.valorTotalGado),'R$\u00a06.505,00', 'Balanção sem alterações deve validar mesmo com campos em outra ordem');
  assert.equal(await b.evaluate(()=>window.__mock.data.romaneios.p1.revisaoValidada),1);assert.deepEqual(be,[]);
+ const codigoCompra=await b.evaluate(()=>window.__mock.data.romaneios.p1.codigoCompra);
+ assert.equal(codigoCompra,'OC-GVQ-202610-p1');
  console.log('PASS: originador preenche os campos obrigatórios e valida o registro.');
+ const exportData=await b.evaluate(()=>window.__mock.data);
+ exportData.romaneios.p1.pesosIndividuais=[300,350.5];
+ const {page:exportPage,errors:exportErrors}=await pageFor('office1','pages/escritorio.html',1280,exportData);
+ const exportRow=exportPage.locator('#tbody-romaneios tr').filter({hasText:'João Pecuarista'});
+ assert.equal(await exportRow.locator('.codigo-compra').innerText(),codigoCompra);
+ assert.equal(await exportRow.locator('.codigo-compra').getAttribute('title'),codigoCompra);
+ await exportRow.locator('.chk-export').check();
+ for(const [metodo,arquivo] of [['exportarExcelGeral','GVQ_Relatorio_Compras.csv'],['exportarExcelPesos','GVQ_Relatorio_Pesos.csv']]){
+  const downloadPromise=exportPage.waitForEvent('download');
+  await exportPage.evaluate(m=>window[m](),metodo);
+  const download=await downloadPromise, csv=fs.readFileSync(await download.path(),'utf8').replace(/^\uFEFF/,'');
+  assert.equal(download.suggestedFilename(),arquivo);
+  assert.ok(csv.startsWith('Ordem de Compra;ID '));
+  assert.ok(csv.split('\n')[1].startsWith(codigoCompra+';p1;'));
+ }
+ assert.deepEqual(exportErrors,[]);await exportPage.close();
+ console.log('PASS: código automático visível no escritório e idêntico nas exportações de compras e pesos.');
  // Documento posterior retira a compra do escritório e preserva negociação anterior para revalidação.
  data=await b.evaluate(()=>window.__mock.data);
  // O escritório assume e finaliza antes de o pesador complementar documentos.
@@ -145,7 +164,9 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  const {page:br,errors:bre}=await pageFor('buyer1','pages/painel.html',1280,data);assert.ok((await br.locator('#tbody-pendentes').innerText()).includes('Novos documentos'));await br.getByRole('button',{name:'Revalidar',exact:true}).click();
  assert.equal(await br.locator('#rom_preco').inputValue(),'300');assert.equal(await br.locator('#rom_tipo_pesagem').inputValue(),'balancao');
  assert.equal(await br.locator('#lista-arquivos-ui a').count(),1);
+ await br.locator('#rom_data_compra').fill('2026-11-01');
  await br.locator('#btn-registrar').click();await br.waitForTimeout(40);
+ assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.codigoCompra),codigoCompra,'Correção do mês e revalidação preservam a ordem original');
  assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.revisaoValidada),2);assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.anexosLinks.length),1);assert.deepEqual(bre,[]);
  console.log('PASS: complementação com upload simulado, bloqueio no escritório e revalidação sem perder negociação.');
  assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.etapaEscritorio),'recebida');

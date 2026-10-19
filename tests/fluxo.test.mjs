@@ -1,3 +1,4 @@
+import { gerarCodigoCompra, codigoDaCompra } from '../js/codigo-compra.js';
 import { podeMudarEtapa, etapaAtual } from '../js/etapas-escritorio.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -62,4 +63,14 @@ test('etapas do escritório seguem Recebida, Em andamento, Finalizada e reabertu
     assert.equal(podeMudarEtapa('finalizada', 'em_andamento'), true);
     assert.equal(podeMudarEtapa('recebida', 'finalizada'), false);
     assert.equal(podeMudarEtapa('finalizada', 'recebida'), false);
+});
+
+test('ordem de compra usa fazenda de destino, mês da compra e ID completo', () => {
+    const compra = { ...base, fazendaDestino: 'Fazenda São José' };
+    assert.equal(gerarCodigoCompra(compra, 'AbCd1234EFgh5678IjKl'), 'OC-SAO-JOSE-202610-AbCd1234EFgh5678IjKl');
+    assert.notEqual(gerarCodigoCompra(compra, 'a'), gerarCodigoCompra(compra, 'b'));
+    assert.notEqual(gerarCodigoCompra(compra, 'a'), gerarCodigoCompra({ ...compra, dataCompra: '2026-11-01' }, 'a'));
+    assert.notEqual(gerarCodigoCompra(compra, 'a'), gerarCodigoCompra({ ...compra, fazendaDestino: 'Outra' }, 'a'));
+    assert.equal(codigoDaCompra({ ...compra, id: 'a', codigoCompra: 'OC-FIXO-202609-a' }), 'OC-FIXO-202609-a');
+    assert.equal(codigoDaCompra({ id: 'legado' }), 'OC-FAZENDA-SEM-DATA-legado');
 });
