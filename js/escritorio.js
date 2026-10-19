@@ -1,6 +1,8 @@
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
+import { exigirPerfil } from "./auth-guard.js";
+import { escapeHtml } from "./fluxo-compra.js";
 
 let pecuaristasGlobais = [];
 let destinosGlobais = [];
@@ -17,7 +19,9 @@ const bancosBrasileiros = [
 
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        let logado = localStorage.getItem('gvq_sistema_logado') || 'Escritório';
+        const perfil = await exigirPerfil(user, ['escritorio']);
+        if (!perfil) return;
+        let logado = perfil.nome;
         document.getElementById('nome-usuario').innerText = 'Olá, ' + logado.split(' ')[0];
         
         carregarEstadosIniciais();
@@ -109,7 +113,7 @@ function iniciarSincronizacaoEmTempoReal() {
                 let p = doc.data();
                 pecuaristasGlobais.push(p);
                 let localF = (p.cidade && p.estado) ? `${p.cidade} - ${p.estado}` : '-';
-                tbody.innerHTML += `<tr><td><strong>${p.nome}</strong></td><td class="col-doc">${p.documento || '-'}</td><td class="col-local">${localF}</td><td>${p.banco || '-'}</td><td class="col-doc">${p.agencia || '-'}</td><td class="col-doc">${p.conta || '-'}</td></tr>`;
+                tbody.innerHTML += `<tr><td><strong>${escapeHtml(p.nome)}</strong></td><td class="col-doc">${escapeHtml(p.documento || '-')}</td><td class="col-local">${escapeHtml(localF)}</td><td>${escapeHtml(p.banco || '-')}</td><td class="col-doc">${escapeHtml(p.agencia || '-')}</td><td class="col-doc">${escapeHtml(p.conta || '-')}</td></tr>`;
             });
         }
     });
@@ -127,7 +131,7 @@ function iniciarSincronizacaoEmTempoReal() {
                 let d = doc.data();
                 destinosGlobais.push(d);
                 let localF = (d.cidade && d.estado) ? `${d.cidade} - ${d.estado}` : '-';
-                tbody.innerHTML += `<tr><td><strong>${d.nome}</strong></td><td class="col-local">${localF}</td></tr>`;
+                tbody.innerHTML += `<tr><td><strong>${escapeHtml(d.nome)}</strong></td><td class="col-local">${escapeHtml(localF)}</td></tr>`;
             });
         }
     });
@@ -143,43 +147,44 @@ function iniciarSincronizacaoEmTempoReal() {
         } else {
             snapshot.forEach((docSnap) => {
                 let r = docSnap.data();
+                if (r.status && r.status !== 'enviado_escritorio') return;
                 r.id = docSnap.id; 
                 romaneiosGlobais.push(r);
             });
 
-            romaneiosGlobais.reverse().forEach(r => {
+            romaneiosGlobais.sort((a, b) => (b.dataCompra || '').localeCompare(a.dataCompra || '')).forEach(r => {
                 let dataF = r.dataCompra ? r.dataCompra.split('-').reverse().join('/') : '-';
                 
                 let anexosVisual = '-';
                 if (r.anexosLinks && r.anexosLinks.length > 0) {
-                    anexosVisual = r.anexosLinks.map(a => `<a href="${a.urlDownload}" target="_blank" class="tag tag-indigo tag-anexo tag-link"><svg class="icon icon-sm"><use href="../assets/img/icones.svg#anexo"></use></svg><span class="tag-texto">${a.nomeArquivo}</span></a>`).join('<br>');
+                    anexosVisual = r.anexosLinks.filter(a => { try { return new URL(a.urlDownload).protocol === 'https:'; } catch { return false; } }).map(a => `<a href="${escapeHtml(a.urlDownload)}" target="_blank" rel="noopener noreferrer" class="tag tag-indigo tag-anexo tag-link"><svg class="icon icon-sm"><use href="../assets/img/icones.svg#anexo"></use></svg><span class="tag-texto">${escapeHtml(a.nomeArquivo)}</span></a>`).join('<br>');
                 } else if (r.anexos && r.anexos.length > 0) {
-                    anexosVisual = r.anexos.map(n => `<span class="tag tag-anexo"><svg class="icon icon-sm"><use href="../assets/img/icones.svg#anexo"></use></svg><span class="tag-texto">${n}</span></span>`).join('<br>');
+                    anexosVisual = r.anexos.map(n => `<span class="tag tag-anexo"><svg class="icon icon-sm"><use href="../assets/img/icones.svg#anexo"></use></svg><span class="tag-texto">${escapeHtml(n)}</span></span>`).join('<br>');
                 }
 
-                let valorGado = r.valorTotalGado ? `<span class="valor-total">${r.valorTotalGado}</span>` : '-';
-                let precoStr = r.precoUnitario ? `<span class="celula-dupla"><span>R$ ${r.precoUnitario}</span><span class="texto-suave">${r.unidadePreco}</span></span>` : '-';
+                let valorGado = r.valorTotalGado ? `<span class="valor-total">${escapeHtml(r.valorTotalGado)}</span>` : '-';
+                let precoStr = r.precoUnitario ? `<span class="celula-dupla"><span>R$ ${escapeHtml(r.precoUnitario)}</span><span class="texto-suave">${escapeHtml(r.unidadePreco)}</span></span>` : '-';
                 
                 let comissaoStr = '-';
                 if (r.tipoComissao && r.tipoComissao !== 'Nenhuma') {
                     let totalVal = r.totalComissao ? r.totalComissao : `R$ ${r.valorComissao}`;
-                    comissaoStr = `<span class="celula-dupla"><strong>${totalVal}</strong><span class="texto-suave">${r.tipoComissao}</span></span>`;
+                    comissaoStr = `<span class="celula-dupla"><strong>${escapeHtml(totalVal)}</strong><span class="texto-suave">${escapeHtml(r.tipoComissao)}</span></span>`;
                 }
                 
                 tbody.innerHTML += `
                     <tr>
-                        <td class="col-chk"><input type="checkbox" class="chk-export" value="${r.id}" aria-label="Selecionar registro"></td>
-                        <td class="col-data"><strong>${dataF}</strong></td>
-                        <td class="col-destaque"><span class="texto-cortado">${r.pecuarista}</span></td>
-                        <td>${(r.comprador || '').split(' ')[0]}</td>
-                        <td class="col-num"><strong>${r.cabecas}</strong></td>
-                        <td class="col-num">${r.pesoTotal}</td>
+                        <td class="col-chk"><input type="checkbox" class="chk-export" value="${escapeHtml(r.id)}" aria-label="Selecionar registro"></td>
+                        <td class="col-data"><strong>${escapeHtml(dataF)}</strong></td>
+                        <td class="col-destaque"><span class="texto-cortado">${escapeHtml(r.pecuarista)}</span></td>
+                        <td>${escapeHtml((r.comprador || '').split(' ')[0])}</td>
+                        <td class="col-num"><strong>${escapeHtml(r.cabecas)}</strong></td>
+                        <td class="col-num">${escapeHtml(r.pesoTotal)}</td>
                         <td class="col-num">${precoStr}</td>
                         <td class="col-num">${valorGado}</td>
                         <td class="col-num">${comissaoStr}</td>
-                        <td>${r.raca || '-'}</td>
-                        <td>${r.cidade} - ${r.estado}</td>
-                        <td class="col-destino"><span class="texto-cortado">${r.fazendaDestino || '-'}</span></td>
+                        <td>${escapeHtml(r.raca || '-')}</td>
+                        <td>${escapeHtml(r.cidade)} - ${escapeHtml(r.estado)}</td>
+                        <td class="col-destino"><span class="texto-cortado">${escapeHtml(r.fazendaDestino || '-')}</span></td>
                         <td class="col-anexos">${anexosVisual}</td>
                     </tr>
                 `;
@@ -312,3 +317,4 @@ window.exportarExcelPesos = function() {
     if(!temPesos) return alert('Nenhum peso individual registrado nas compras selecionadas.');
     baixarCSV(csv, "GVQ_Relatorio_Pesos.csv");
 }
+

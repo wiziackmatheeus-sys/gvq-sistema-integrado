@@ -55,3 +55,8 @@ node scripts/dev-server.mjs
 e abra http://localhost:5500. A página recarrega sozinha quando um arquivo é salvo, e mudanças de CSS são aplicadas sem nem recarregar.
 
 > ⚠️ A configuração em `js/firebase.js` aponta para o projeto Firebase de **produção** (`gvq-sistema-compras`). Tudo o que for feito localmente grava nos dados reais. Ver Etapa 1 em [docs/DILIGENCIA.md](docs/DILIGENCIA.md).
+
+## Perfis e encaminhamento
+
+O fluxo agora começa no **pesador**, passa pela conferência e negociação do **comprador** e termina no **escritório**. Instruções de implantação das regras, vínculo do histórico e testes: [docs/FLUXO-PESADOR.md](docs/FLUXO-PESADOR.md).
+
