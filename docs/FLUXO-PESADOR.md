@@ -34,6 +34,16 @@ Cada validação verifica a revisão atual, evitando que um originador confirme 
 
 Arquivos antigos que eram guardados somente pelo nome não são recuperáveis por esta alteração. Os nomes são preservados e os arquivos podem ser anexados novamente pelo pesador.
 
+## Documentos por tipo e filtros do escritório
+
+O envio inicial e a complementação do pesador, assim como a conferência do originador, têm espaços separados para **Nota fiscal, GTA, Romaneio manual, Foto do gado, Vídeo do gado, Foto da carreta e Outros**. Todos são opcionais e aceitam mais de um arquivo. Cada arquivo guarda sua categoria; arquivos antigos sem categoria aparecem em Outros. As fotos e vídeos têm seletores adequados ao tipo de mídia. Continua valendo o limite de 25 MB por arquivo, inclusive vídeos.
+
+Os espaços mostram quantos arquivos estão disponíveis e quais ainda não foram anexados, sem bloquear a compra. A lista identifica a categoria e o nome de cada arquivo. No escritório, expandir **Documentos** permite consultar as sete categorias, abrir os arquivos e ver Não anexado (opcional). O envio posterior conserva as categorias e segue o fluxo existente de revalidação pelo originador.
+
+Acima da tabela do escritório há filtros combinados por código da compra (inclusive parte do código), fazenda de destino, originador, etapa e mês da data da compra. A contagem informa resultados e total. **Limpar filtros** restaura a lista. Ao filtrar ou atualizar os dados, a seleção das compras é limpa; Selecionar todos abrange somente as linhas visíveis e a exportação considera essas linhas selecionadas. Compras antigas sem UID de originador continuam filtráveis pelo nome. Os filtros continuam aplicados durante atualizações em tempo real.
+
+Esta alteração não muda as regras de acesso nem cria exigência de documentos. Mantém os estilos existentes. A configuração do Storage e as regras Firestore/Storage das versões anteriores continuam necessárias.
+
 ## Identificação automática da compra
 
 Na primeira validação pelo originador, o app gera `codigoCompra` no formato `OC-FAZENDA-AAAAMM-ID`: nome da fazenda de destino sem acentos/espaços (até 24 caracteres), ano/mês da data da compra e ID completo do registro. Exemplo: `OC-SAO-JOSE-202610-AbCd1234EFgh5678IjKl`. O ID completo distingue compras simultâneas da mesma fazenda/mês sem depender de contador. O mês não depende do relógio ou fuso de quem abre a tela.

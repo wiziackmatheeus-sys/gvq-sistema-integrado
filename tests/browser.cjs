@@ -96,9 +96,20 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  console.log('PASS: pesagem por balanção sem individuais e sem valores; vínculo não selecionável.');
  // Upload inicial e pesos individuais também funcionam.
  const {page:wi,errors:wie}=await pageFor('weigher1','pages/pesador.html');await fillOperacional(wi,true);
- await wi.locator('#input_arquivos').setInputFiles({name:'romaneio.pdf',mimeType:'application/pdf',buffer:Buffer.from('PDF teste')});await wi.locator('#btn-registrar').click();await wi.waitForTimeout(30);
- assert.equal(await wi.evaluate(()=>window.__mock.uploads.length),1);assert.equal(await wi.evaluate(()=>window.__mock.writes[0].data.anexosLinks[0].nomeArquivo),'romaneio.pdf');assert.deepEqual(wie,[]);
+ await wi.locator('#input_arquivos_romaneio_manual').setInputFiles({name:'romaneio.pdf',mimeType:'application/pdf',buffer:Buffer.from('PDF teste')});await wi.locator('#btn-registrar').click();await wi.waitForTimeout(30);
+ assert.equal(await wi.evaluate(()=>window.__mock.uploads.length),1);assert.equal(await wi.evaluate(()=>window.__mock.writes[0].data.anexosLinks[0].categoria),'romaneio_manual');assert.equal(await wi.evaluate(()=>window.__mock.writes[0].data.anexosLinks[0].nomeArquivo),'romaneio.pdf');assert.deepEqual(wie,[]);
  console.log('PASS: pesos individuais e arquivo inicial com link persistido.');
+ // Documentos de tipos diferentes e arquivos com o mesmo nome conservam suas categorias.
+ const {page:docs,errors:de}=await pageFor('weigher1','pages/pesador.html');await fillOperacional(docs);
+ for(const [tipo,mimeType] of [['nota_fiscal','application/pdf'],['foto_gado','image/jpeg'],['video_gado','video/mp4']]){
+  await docs.locator('#input_arquivos_'+tipo).setInputFiles({name:'mesmo-nome',mimeType,buffer:Buffer.from('arquivo teste')});
+ }
+ assert.equal(await docs.locator('#lista-arquivos-ui .item-anexo').count(),3);
+ await docs.locator('#btn-registrar').click();await docs.waitForTimeout(40);
+ assert.deepEqual(await docs.evaluate(()=>window.__mock.writes[0].data.anexosLinks.map(a=>a.categoria)),['nota_fiscal','foto_gado','video_gado']);
+ assert.deepEqual(de,[]);await docs.close();
+ console.log('PASS: nota fiscal, foto e vídeo opcionais conservam categorias e nomes repetidos.');
+
  // Originador revisa um novo registro gerado pela tela do pesador.
  let data=await w.evaluate(()=>window.__mock.data);data.pesagens={p1:{...data.pesagens['new-id']}};
  const {page:b,errors:be}=await pageFor('buyer1','pages/painel.html',1280,data);
@@ -132,7 +143,29 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
   assert.ok(csv.startsWith('Ordem de Compra;ID '));
   assert.ok(csv.split('\n')[1].startsWith(codigoCompra+';p1;'));
  }
- assert.deepEqual(exportErrors,[]);await exportPage.close();
+ assert.deepEqual(exportErrors,[]);
+ // Filtros combinados, seleção restrita à lista e consulta ao histórico da compra correta.
+ await exportPage.locator('#filtro-codigo').fill(codigoCompra);
+ await exportPage.locator('#filtro-fazenda').selectOption('Fazenda GVQ');
+ await exportPage.locator('#filtro-originador').selectOption('buyer1');
+ await exportPage.locator('#filtro-etapa').selectOption('recebida');
+ await exportPage.locator('#filtro-mes').fill('2026-10');await exportPage.locator('#filtro-mes').dispatchEvent('change');
+ assert.equal(await exportPage.locator('#tbody-romaneios .chk-export').count(),1);
+ await exportPage.locator('#chkAll').check();assert.equal(await exportPage.locator('.chk-export:checked').count(),1);
+ await exportRow.locator('.col-etapa-escritorio select').selectOption('em_andamento');await exportPage.waitForTimeout(30);
+ assert.equal(await exportPage.evaluate(()=>window.__mock.data.romaneios.p1.etapaEscritorio),'em_andamento');
+ assert.equal(await exportPage.locator('#filtro-etapa').inputValue(),'recebida');
+ await exportPage.locator('#filtro-etapa').selectOption('finalizada');
+ assert.equal(await exportPage.locator('#tbody-romaneios .chk-export').count(),0);
+ assert.ok((await exportPage.locator('#tbody-romaneios').innerText()).includes('Nenhuma compra encontrada'));
+ await exportPage.locator('#limpar-filtros').click();
+ assert.equal(await exportPage.locator('#tbody-romaneios .chk-export').count(),2);
+ assert.equal(await exportPage.locator('.chk-export:checked').count(),0);
+ await exportRow.locator('.col-anexos summary').click();
+ assert.ok((await exportRow.locator('.col-anexos').innerText()).includes('Nota fiscal'));
+ assert.ok((await exportRow.locator('.col-anexos').innerText()).includes('Não anexado (opcional)'));
+ await exportPage.close();
+ console.log('PASS: filtros combinados, nenhum resultado, seleção visível e documentos opcionais no escritório.');
  console.log('PASS: código automático visível no escritório e idêntico nas exportações de compras e pesos.');
  // Documento posterior retira a compra do escritório e preserva negociação anterior para revalidação.
  data=await b.evaluate(()=>window.__mock.data);
@@ -153,8 +186,9 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  data=await processing.evaluate(()=>window.__mock.data);
  const {page:wc,errors:wce}=await pageFor('weigher1','pages/pesador.html',1280,data);
  await wc.evaluate(()=>window.mostrarTelaHistorico());await wc.getByRole('button',{name:'Anexar documentos'}).click();
- await wc.locator('#input_complementos').setInputFiles({name:'GTA.pdf',mimeType:'application/pdf',buffer:Buffer.from('GTA teste')});
+ await wc.locator('#input_complementos_gta').setInputFiles({name:'GTA.pdf',mimeType:'application/pdf',buffer:Buffer.from('GTA teste')});
  await wc.locator('#btn-complementar').click();await wc.waitForTimeout(40);
+ assert.equal(await wc.evaluate(()=>window.__mock.data.pesagens.p1.anexosLinks[0].categoria),'gta');
  assert.equal(await wc.evaluate(()=>window.__mock.data.pesagens.p1.revisao),2);assert.equal(await wc.evaluate(()=>window.__mock.data.romaneios.p1.status),'aguardando_revalidacao');
  assert.equal(await wc.evaluate(()=>window.__mock.reads.some(r=>r.name==='romaneios')),false);assert.deepEqual(wce,[]);
  data=await wc.evaluate(()=>window.__mock.data);
@@ -163,7 +197,7 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  assert.ok(!(await oc.locator('#tbody-romaneios').innerText()).includes('João Pecuarista'));
  const {page:br,errors:bre}=await pageFor('buyer1','pages/painel.html',1280,data);assert.ok((await br.locator('#tbody-pendentes').innerText()).includes('Novos documentos'));await br.getByRole('button',{name:'Revalidar',exact:true}).click();
  assert.equal(await br.locator('#rom_preco').inputValue(),'300');assert.equal(await br.locator('#rom_tipo_pesagem').inputValue(),'balancao');
- assert.equal(await br.locator('#lista-arquivos-ui a').count(),1);
+ assert.equal(await br.locator('#lista-arquivos-ui a').count(),1);assert.ok((await br.locator('#lista-arquivos-ui').innerText()).includes('GTA: GTA.pdf'));assert.equal(await br.locator('#campos-documentos [data-situacao=gta]').innerText(),'1 arquivo(s)');
  await br.locator('#rom_data_compra').fill('2026-11-01');
  await br.locator('#btn-registrar').click();await br.waitForTimeout(40);
  assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.codigoCompra),codigoCompra,'Correção do mês e revalidação preservam a ordem original');
@@ -254,6 +288,8 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  // Obrigatoriedade: anexos e observações são opcionais; raça extra só quando Outra.
  const {page:required}=await pageFor('weigher1','pages/pesador.html');
  assert.deepEqual(await required.locator('#form-romaneio input:not([type=file]):not(#rom_raca_outra),#form-romaneio select').evaluateAll(els=>els.filter(e=>!e.required).map(e=>e.id)),[]);
+ assert.equal(await required.locator('#campos-documentos input[type=file]').count(),7);
+ assert.equal(await required.locator('#campos-documentos input[type=file]').evaluateAll(els=>els.some(e=>e.required)),false);
  assert.equal(await required.locator('#input_arquivos').evaluate(e=>e.required),false);assert.equal(await required.locator('#rom_obs').evaluate(e=>e.required),false);
  for(const width of [1280,375]){
   const {page:after}=await pageFor('buyer1','pages/painel.html',width);await after.getByRole('button',{name:'Conferir',exact:true}).click();

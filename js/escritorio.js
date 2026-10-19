@@ -1,3 +1,5 @@
+import { filtrarCompras } from './filtros-compras.js';
+import { tiposDocumento, categoriaDocumento } from './documentos.js';
 import { codigoDaCompra } from './codigo-compra.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { collection, addDoc, query, orderBy, serverTimestamp, doc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -147,72 +149,97 @@ function iniciarSincronizacaoEmTempoReal() {
         }
     });
 
-    const qRom = query(collection(db, "romaneios")); 
-    sessao.observar(qRom, (snapshot) => {
-        romaneiosGlobais = [];
-        let tbody = document.getElementById('tbody-romaneios');
-        tbody.innerHTML = '';
-
-        if(snapshot.empty) {
-            tbody.innerHTML = '<tr><td colspan="14" class="celula-vazia">Nenhum romaneio registrado ainda.</td></tr>';
-        } else {
-            snapshot.forEach((docSnap) => {
-                let r = docSnap.data();
-                if (r.status && r.status !== 'enviado_escritorio') return;
-                r.id = docSnap.id; 
-                romaneiosGlobais.push(r);
-            });
-
-            if (!romaneiosGlobais.length) tbody.innerHTML = '<tr><td colspan="14" class="celula-vazia">Nenhuma compra validada disponível.</td></tr>';
-            document.getElementById('chkAll').checked = false;
-            romaneiosGlobais.sort((a, b) => (b.dataCompra || '').localeCompare(a.dataCompra || '')).forEach(r => {
-                let dataF = r.dataCompra ? r.dataCompra.split('-').reverse().join('/') : '-';
-                
-                let anexosVisual = '-';
-                if (r.anexosLinks && r.anexosLinks.length > 0) {
-                    anexosVisual = r.anexosLinks.filter(a => { try { return new URL(a.urlDownload).protocol === 'https:'; } catch { return false; } }).map(a => `<a href="${escapeHtml(a.urlDownload)}" target="_blank" rel="noopener noreferrer" class="tag tag-indigo tag-anexo tag-link"><svg class="icon icon-sm"><use href="../assets/img/icones.svg#anexo"></use></svg><span class="tag-texto">${escapeHtml(a.nomeArquivo)}</span></a>`).join('<br>');
-                } else if (r.anexos && r.anexos.length > 0) {
-                    anexosVisual = r.anexos.map(n => `<span class="tag tag-anexo"><svg class="icon icon-sm"><use href="../assets/img/icones.svg#anexo"></use></svg><span class="tag-texto">${escapeHtml(n)}</span></span>`).join('<br>');
-                }
-
-                let valorGado = r.valorTotalGado ? `<span class="valor-total">${escapeHtml(r.valorTotalGado)}</span>` : '-';
-                let precoStr = r.precoUnitario ? `<span class="celula-dupla"><span>R$ ${escapeHtml(r.precoUnitario)}</span><span class="texto-suave">${escapeHtml(r.unidadePreco)}</span></span>` : '-';
-                
-                let comissaoStr = '-';
-                if (r.tipoComissao && r.tipoComissao !== 'Nenhuma') {
-                    let totalVal = r.totalComissao ? r.totalComissao : `R$ ${r.valorComissao}`;
-                    comissaoStr = `<span class="celula-dupla"><strong>${escapeHtml(totalVal)}</strong><span class="texto-suave">${escapeHtml(r.tipoComissao)}</span></span>`;
-                }
-                
-                tbody.innerHTML += `
-                    <tr>
-                        <td class="col-chk"><input type="checkbox" class="chk-export" value="${escapeHtml(r.id)}" aria-label="Selecionar registro"></td>
-                        <td class="col-data"><strong>${escapeHtml(dataF)}</strong></td>
-                        <td class="col-destaque"><span class="texto-cortado">${escapeHtml(r.pecuarista)}</span><span class="texto-cortado texto-suave codigo-compra">${escapeHtml(codigoDaCompra(r))}</span></td>
-                        <td>${escapeHtml((r.comprador || '').split(' ')[0])}</td>
-                        <td class="col-etapa-escritorio"></td>
-                        <td class="col-num"><strong>${escapeHtml(r.cabecas)}</strong></td>
-                        <td class="col-num">${escapeHtml(r.pesoTotal)}</td>
-                        <td class="col-num">${precoStr}</td>
-                        <td class="col-num">${valorGado}</td>
-                        <td class="col-num">${comissaoStr}</td>
-                        <td>${escapeHtml(r.raca || '-')}</td>
-                        <td>${escapeHtml(r.cidade)} - ${escapeHtml(r.estado)}</td>
-                        <td class="col-destino"><span class="texto-cortado">${escapeHtml(r.fazendaDestino || '-')}</span></td>
-                        <td class="col-anexos">${anexosVisual}</td>
-                    </tr>
-                `;
-            });
-            tbody.querySelectorAll('tr').forEach((tr, indice) => {
-                const compra = romaneiosGlobais[indice];
-                if (compra) montarControleEtapa(tr.querySelector('.col-etapa-escritorio'), compra);
-            });
-            // Nome completo no tooltip, preenchido pelo DOM para não interpolar valores do banco em atributos
-            tbody.querySelectorAll('.texto-cortado').forEach(el => { el.title = el.textContent; });
-            tbody.querySelectorAll('.tag-anexo').forEach(el => { el.title = el.querySelector('.tag-texto').textContent; });
-        }
+    const qRom = query(collection(db, 'romaneios'));
+    sessao.observar(qRom, snapshot => {
+        romaneiosGlobais = snapshot.docs.map(d => ({ ...d.data(), id: d.id }))
+            .filter(r => !r.status || r.status === 'enviado_escritorio');
+        atualizarOpcoesFiltros();
+        renderizarCompras();
     });
 }
+function atualizarOpcoesFiltros() {
+    const listas = {
+        fazenda: [...new Set(romaneiosGlobais.map(r => r.fazendaDestino).filter(Boolean))].map(nome => [nome, nome]),
+        originador: [...new Map(romaneiosGlobais.filter(r => r.comprador).map(r => [r.compradorUid || r.comprador, r.comprador]))]
+    };
+    Object.entries(listas).forEach(([campo, opcoes]) => {
+        const select = document.getElementById('filtro-' + campo), atual = select.value;
+        select.replaceChildren(new Option(campo === 'fazenda' ? 'Todas' : 'Todos', ''));
+        opcoes.sort((a,b) => a[1].localeCompare(b[1], 'pt-BR')).forEach(([valor, nome]) => select.add(new Option(nome, valor)));
+        // Preserva a seleção mesmo se uma atualização retirar o último resultado da lista.
+        if (atual && !opcoes.some(([valor]) => valor === atual)) select.add(new Option(atual, atual));
+        select.value = atual;
+    });
+}
+function renderizarCompras() {
+    const filtros = Object.fromEntries(['codigo','fazenda','originador','etapa','mes'].map(campo => [campo, document.getElementById('filtro-' + campo).value]));
+    const visiveis = filtrarCompras(romaneiosGlobais, filtros);
+    const tbody = document.getElementById('tbody-romaneios'); tbody.replaceChildren();
+    document.getElementById('resultado-filtros').textContent = `${visiveis.length} de ${romaneiosGlobais.length} compras`;
+    document.getElementById('chkAll').checked = false;
+    if (!visiveis.length) {
+        tbody.innerHTML = '<tr><td colspan="14" class="celula-vazia">Nenhuma compra encontrada.</td></tr>'; return;
+    }
+    visiveis.sort((a, b) => (b.dataCompra || '').localeCompare(a.dataCompra || '')).forEach(r => {
+        let dataF = r.dataCompra ? r.dataCompra.split('-').reverse().join('/') : '-';
+
+        const anexosVisual = resumoDocumentos(r);
+
+        let valorGado = r.valorTotalGado ? `<span class="valor-total">${escapeHtml(r.valorTotalGado)}</span>` : '-';
+        let precoStr = r.precoUnitario ? `<span class="celula-dupla"><span>R$ ${escapeHtml(r.precoUnitario)}</span><span class="texto-suave">${escapeHtml(r.unidadePreco)}</span></span>` : '-';
+
+        let comissaoStr = '-';
+        if (r.tipoComissao && r.tipoComissao !== 'Nenhuma') {
+            let totalVal = r.totalComissao ? r.totalComissao : `R$ ${r.valorComissao}`;
+            comissaoStr = `<span class="celula-dupla"><strong>${escapeHtml(totalVal)}</strong><span class="texto-suave">${escapeHtml(r.tipoComissao)}</span></span>`;
+        }
+
+        tbody.innerHTML += `
+            <tr>
+                <td class="col-chk"><input type="checkbox" class="chk-export" value="${escapeHtml(r.id)}" aria-label="Selecionar registro"></td>
+                <td class="col-data"><strong>${escapeHtml(dataF)}</strong></td>
+                <td class="col-destaque"><span class="texto-cortado">${escapeHtml(r.pecuarista)}</span><span class="texto-cortado texto-suave codigo-compra">${escapeHtml(codigoDaCompra(r))}</span></td>
+                <td>${escapeHtml((r.comprador || '').split(' ')[0])}</td>
+                <td class="col-etapa-escritorio"></td>
+                <td class="col-num"><strong>${escapeHtml(r.cabecas)}</strong></td>
+                <td class="col-num">${escapeHtml(r.pesoTotal)}</td>
+                <td class="col-num">${precoStr}</td>
+                <td class="col-num">${valorGado}</td>
+                <td class="col-num">${comissaoStr}</td>
+                <td>${escapeHtml(r.raca || '-')}</td>
+                <td>${escapeHtml(r.cidade)} - ${escapeHtml(r.estado)}</td>
+                <td class="col-destino"><span class="texto-cortado">${escapeHtml(r.fazendaDestino || '-')}</span></td>
+                <td class="col-anexos">${anexosVisual}</td>
+            </tr>
+        `;
+    });
+    tbody.querySelectorAll('tr').forEach((tr, indice) => {
+        const compra = visiveis[indice];
+        if (compra) montarControleEtapa(tr.querySelector('.col-etapa-escritorio'), compra);
+    });
+    // Nome completo no tooltip, preenchido pelo DOM para não interpolar valores do banco em atributos
+    tbody.querySelectorAll('.texto-cortado').forEach(el => { el.title = el.textContent; });
+    tbody.querySelectorAll('.tag-anexo').forEach(el => { el.title = el.querySelector('.tag-texto').textContent; });
+}
+function resumoDocumentos(compra) {
+    const anexos = [...(compra.anexosLinks || []), ...(compra.anexos || []).filter(nome => !(compra.anexosLinks || []).some(a => a.nomeArquivo === nome)).map(nomeArquivo => ({ nomeArquivo }))];
+    return `<details><summary>Documentos (${anexos.length})</summary>` + tiposDocumento.map(([tipo,nome]) => {
+        const arquivos = anexos.filter(a => categoriaDocumento(a) === tipo);
+        const links = arquivos.map(a => {
+            let seguro = false; try { seguro = new URL(a.urlDownload).protocol === 'https:'; } catch {}
+            const texto = `<span class="tag-texto">${escapeHtml(a.nomeArquivo)}</span>`;
+            return seguro ? `<a class="tag tag-indigo tag-anexo tag-link" href="${escapeHtml(a.urlDownload)}" target="_blank" rel="noopener noreferrer">${texto}</a>` : `<span class="tag tag-anexo">${texto}</span>`;
+        }).join('<br>');
+        return `<div><strong>${nome}</strong><br>${links || '<span class="texto-suave">Não anexado (opcional)</span>'}</div>`;
+    }).join('') + '</details>';
+}
+['codigo','fazenda','originador','etapa','mes'].forEach(campo => {
+    document.getElementById('filtro-' + campo).addEventListener(campo === 'codigo' ? 'input' : 'change', renderizarCompras);
+});
+document.getElementById('limpar-filtros').addEventListener('click', () => {
+    ['codigo','fazenda','originador','etapa','mes'].forEach(campo => { document.getElementById('filtro-' + campo).value = ''; });
+    renderizarCompras();
+});
 
 window.adicionarPecuarista = async function() {
     let nomeInput = document.getElementById('novo_pec_nome');

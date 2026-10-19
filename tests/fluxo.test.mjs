@@ -1,3 +1,5 @@
+import { filtrarCompras } from '../js/filtros-compras.js';
+import { categoriaDocumento, nomeDocumento, tiposDocumento } from '../js/documentos.js';
 import { gerarCodigoCompra, codigoDaCompra } from '../js/codigo-compra.js';
 import { podeMudarEtapa, etapaAtual } from '../js/etapas-escritorio.js';
 import test from 'node:test';
@@ -73,4 +75,19 @@ test('ordem de compra usa fazenda de destino, mês da compra e ID completo', () 
     assert.notEqual(gerarCodigoCompra(compra, 'a'), gerarCodigoCompra({ ...compra, fazendaDestino: 'Outra' }, 'a'));
     assert.equal(codigoDaCompra({ ...compra, id: 'a', codigoCompra: 'OC-FIXO-202609-a' }), 'OC-FIXO-202609-a');
     assert.equal(codigoDaCompra({ id: 'legado' }), 'OC-FAZENDA-SEM-DATA-legado');
+});
+
+test('filtros de compras combinam código, fazenda, originador, etapa e mês com compatibilidade antiga', () => {
+    const compras = [{ ...base, id: 'a', codigoCompra: 'OC-SAO-JOSE-202610-a', compradorUid: 'u1', comprador: 'Ana', etapaEscritorio: 'finalizada' },
+        { ...base, id: 'b', comprador: 'Antigo', dataCompra: '2026-11-02' }];
+    assert.equal(filtrarCompras(compras, { codigo: 'são-josé', fazenda: base.fazendaDestino, originador: 'u1', etapa: 'finalizada', mes: '2026-10' })[0].id, 'a');
+    assert.deepEqual(filtrarCompras(compras, { mes: '2026-12' }), []);
+    assert.equal(filtrarCompras(compras, { originador: 'Antigo', etapa: 'recebida', mes: '2026-11' })[0].id, 'b');
+    assert.equal(filtrarCompras(compras).length, 2);
+});
+test('documentos possuem sete categorias opcionais e antigos ficam em Outros', () => {
+    assert.equal(tiposDocumento.length, 7);
+    assert.equal(categoriaDocumento({}), 'outros');
+    assert.equal(categoriaDocumento({ categoria: 'inexistente' }), 'outros');
+    assert.equal(nomeDocumento({ categoria: 'gta' }), 'GTA');
 });
