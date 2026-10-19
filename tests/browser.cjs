@@ -72,12 +72,11 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
   if(individual){await p.evaluate(()=>window.mostrarTelaPesagem());await p.locator('#peso_ind_1').fill('300');await p.locator('#peso_ind_2').fill('350.5');await p.evaluate(()=>window.salvarPesosGrid())}
   else{await p.locator('#rom_cabecas').fill('2');await p.locator('#rom_peso_total').fill('650.5')}
  }
- // Cadastro pendente e login bloqueado até designação.
+ // A página pública permite apenas entrar; contas anteriores pendentes continuam bloqueadas.
  const {page:signup,errors:se}=await pageFor('new-user','index.html');
- await signup.getByRole('button',{name:'Nova conta',exact:true}).click();await signup.locator('#cad_nome').fill('Pedro Pesador');await signup.locator('#cad_perfil').selectOption('pesador');await signup.locator('#cad_senha').fill('senha-teste-123');await signup.locator('#btn-cadastrar').click();
- assert.equal(await signup.evaluate(()=>window.__mock.writes[0].data.aprovado),false);assert.deepEqual(se,[]);
+ assert.equal(await signup.locator('#form-cadastro').count(),0);assert.equal(await signup.getByRole('button',{name:'Nova conta',exact:true}).count(),0);assert.deepEqual(se,[]);
  const {page:waiting}=await pageFor('waiting','pages/pesador.html');await waiting.waitForURL('**/index.html');
- console.log('PASS: pesador recém-cadastrado aguarda aprovação.');
+ console.log('PASS: cadastro público removido; contas pendentes anteriores permanecem bloqueadas.');
  // Escritório aprova e vincula, com compatibilidade para contas antigas de comprador.
  const {page:office,errors:oe}=await pageFor('office1','pages/escritorio.html');
  await office.locator('#btn-tab-usuarios').click();const row=office.locator('#tbody-usuarios tr').filter({hasText:'Pedro Pesador'});
@@ -102,6 +101,14 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  const {page:accountsFail,alerts:accountAlerts}=await pageFor('office1','pages/escritorio.html');await accountsFail.locator('#btn-tab-usuarios').click();await accountsFail.evaluate(()=>window.__mock.failFunction=true);
  await accountsFail.locator('#tbody-usuarios tr').filter({hasText:'Paulo Pesador'}).getByRole('button',{name:'Redefinir senha',exact:true}).click();
  assert.ok(accountAlerts.some(a=>a.includes('publicação das funções')));assert.equal(await accountsFail.locator('#resultado-conta').isVisible(),false);await accountsFail.close();
+ // Escritório está disponível somente na criação interna e dispensa vínculo ao originador.
+ await office.locator('#btn-tab-usuarios').click();await office.locator('#conta-perfil').selectOption('escritorio');
+ assert.equal(await office.locator('#grupo-conta-originador').isVisible(),false);
+ await office.locator('#conta-nome').fill('Novo Escritório');await office.locator('#conta-login').fill('novo.escritorio');await office.locator('#btn-criar-conta').click();
+ assert.equal(await office.evaluate(()=>window.__mock.chamadas.at(-1).dados.perfil),'escritorio');
+ await office.locator('#filtro-perfil-usuarios').selectOption('escritorio');await office.locator('#busca-usuarios').fill('');
+ assert.ok((await office.locator('#tbody-usuarios').innerText()).includes('Olivia Escritório'));
+ assert.equal(await office.locator('#tbody-usuarios tr').filter({hasText:'Olivia Escritório'}).getByRole('button',{name:'Redefinir senha',exact:true}).count(),0);
  console.log('PASS: criação/redefinição, filtros de usuários e senha oculta ao sair.');
  const forced=seed('weigher1').data;forced.usuarios.weigher1.trocaSenhaObrigatoria=true;
  const {page:forceRedirect}=await pageFor('weigher1','pages/pesador.html',1280,forced);await forceRedirect.waitForURL('**/trocar-senha.html');

@@ -37,11 +37,13 @@ function complemento(d, extras = {}, incluirFinanceiro = true) {
     if (incluirFinanceiro) b.update(doc(d, 'romaneios', 'p1'), { status: 'aguardando_revalidacao', revalidacaoSolicitadaEm: serverTimestamp() });
     return b.commit();
 }
-test('cadastro de pesador fica pendente e não permite autoaprovação nem escolha de originador', async () => {
-    await assertSucceeds(setDoc(doc(db('new'), 'usuarios', 'new'), user('Novo', 'pesador', false)));
-    await assertFails(setDoc(doc(db('bad'), 'usuarios', 'bad'), user('Falso', 'pesador', true)));
-    await assertFails(updateDoc(doc(db('waiting'), 'usuarios', 'waiting'), { aprovado: true, compradorUid: 'buyer1' }));
-    await assertFails(setDoc(doc(db('fake-office'), 'usuarios', 'fake-office'), user('Falso', 'escritorio', true)));
+test('cadastro público de perfis é bloqueado para todos os papéis, inclusive por cliente autenticado', async () => {
+    for (const perfil of ['pesador','originador','comprador','escritorio']) {
+        await assertFails(setDoc(doc(db('new-' + perfil),'usuarios','new-' + perfil),user('Novo',perfil,false)));
+        await assertFails(setDoc(doc(db('new-' + perfil),'usuarios','new-' + perfil),user('Novo',perfil,true)));
+    }
+    await assertFails(updateDoc(doc(db('waiting'),'usuarios','waiting'),{aprovado:true,compradorUid:'buyer1'}));
+    await assertFails(setDoc(doc(db('office1'),'usuarios','novo-office'),user('Novo','escritorio',true)));
 });
 test('somente escritório aprovado pode vincular e aprovar um pesador', async () => {
     const alteracao = { aprovado: true, compradorUid: 'buyer1', comprador: 'Ana', aprovadoPor: 'office1', aprovadoEm: serverTimestamp() };

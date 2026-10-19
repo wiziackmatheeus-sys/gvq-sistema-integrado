@@ -2,7 +2,9 @@
 
 ## Uso
 
-A aba **Usuários** mantém aprovação e vínculo dos pesadores e permite criar contas de **Pesador** e **Originador**, além de redefinir senhas desses perfis (incluindo o perfil antigo `comprador`). Não cria nem redefine contas de escritório. Essas contas administrativas continuam sob gestão do responsável pelo Firebase.
+O cadastro de **Pesador**, **Originador** e **Escritório** ocorre exclusivamente dentro da aba **Usuários**, por uma conta de escritório aprovada. Criar a conta já registra sua aprovação e o UID/data de quem a autorizou. Qualquer escritório aprovado pode criar outros escritórios, com as mesmas permissões. A primeira conta de escritório precisa existir e estar aprovada; as demais podem ser criadas por ela. A aba também mantém aprovação/vínculo de solicitações antigas de pesadores.
+
+A página pública contém somente o login e orienta solicitar acesso ao escritório. Os clientes não podem criar documentos em `usuarios`, nem mesmo autenticados: os perfis são gravados pelo servidor. O endpoint padrão de criação de credenciais do Firebase Auth não é desativado por estas regras; uma credencial sem perfil autorizado não acessa o sistema. Solicitações anteriores de escritório pendentes continuam sem acesso e exigem aprovação administrativa manual, sem liberação automática.
 
 Na criação, informar nome, usuário e perfil. O usuário é sugerido pelo nome e pode ser ajustado para evitar homônimos; não muda o login das contas existentes. Pesadores exigem um originador já aprovado e sem troca de senha pendente. A conta é criada aprovada e vinculada, com senha aleatória individual. Ao criar um novo originador, ele precisa trocar sua senha temporária antes de receber novos pesadores por este formulário.
 
@@ -10,7 +12,7 @@ A senha temporária é mostrada ao escritório após a operação para entrega �
 
 No primeiro acesso, o usuário é direcionado para **Defina sua nova senha** e informa a senha temporária atual, uma senha nova de 8 a 128 caracteres e a confirmação. Depois entra novamente com a senha nova. A troca obrigatória também vale para acesso direto às páginas; Firestore e Storage bloqueiam o uso operacional enquanto estiver pendente. O próprio cliente não pode remover essa exigência.
 
-**Redefinir senha** mantém o UID, o cadastro, o originador responsável e os documentos de compras. A senha anterior para de funcionar, as sessões anteriores são revogadas e a troca obrigatória volta a ser exigida. Não apagar e recriar a conta. Contas antigas sem os novos campos continuam entrando normalmente até uma redefinição.
+**Redefinir senha** mantém o UID, o cadastro, o originador responsável e os documentos de compras. A senha anterior para de funcionar, as sessões anteriores são revogadas e a troca obrigatória volta a ser exigida. Outra conta de escritório pode redefinir a senha de um escritório; o sistema impede redefinir a própria senha por esse botão para evitar bloquear a sessão que receberia a senha temporária. Não apagar e recriar a conta. Contas antigas sem os novos campos continuam entrando normalmente até uma redefinição.
 
 ## Implementação e implantação
 
@@ -22,7 +24,7 @@ Eventos de criação, redefinição e troca ficam em `auditoriaContas`, sem senh
 
 **Aprovar o PR e atualizar o GitHub Pages não publica as funções.** É necessário fazer a publicação no projeto Firebase, com uma conta autorizada. Conferir no console o plano e os requisitos de faturamento para Cloud Functions; não houve alteração de plano ou faturamento durante o desenvolvimento.
 
-1. Fazer backup dos dados e regras atuais.
+1. Fazer backup dos dados e regras atuais. Esta versão exige republicar `criarConta`/`redefinirSenha` e as regras Firestore, mesmo se a versão anterior já estava instalada: a criação pública de perfis é agora negada para todos os papéis.
 2. Com Node 22 e Java disponíveis, instalar dependências:
 
    ```sh

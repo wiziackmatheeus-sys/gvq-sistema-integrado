@@ -4,7 +4,7 @@
 
 O escritório também pode criar contas já aprovadas/vinculadas e redefinir senhas pela aba **Usuários**, com senha temporária e troca obrigatória. Esse recurso exige publicar as Cloud Functions e as novas regras Firestore/Storage. Ver [contas administrativas](CONTAS-ADMIN.md).
 
-O pesador se cadastra normalmente e aguarda aprovação. No painel do escritório, **Usuários** mostra as solicitações pendentes. O escritório seleciona o originador responsável e clica em **Aprovar e vincular**. A aprovação e o vínculo são gravados juntos; não é possível aprovar sem um originador válido. Contas de escritório continuam exigindo aprovação administrativa no Firebase.
+Todos os cadastros novos são feitos pelo escritório na aba **Usuários**, com perfil Pesador, Originador ou Escritório. O pesador já recebe aprovação e vínculo com o originador na criação, e uma senha temporária para trocar no primeiro acesso. A conta de escritório nova já é aprovada por quem a criou; não existe cadastro público nesta versão. As solicitações antigas de pesadores continuam na aba Usuários para **Aprovar e vincular**. Solicitações antigas de escritório não são aprovadas automaticamente e continuam exigindo aprovação administrativa no Firebase.
 
 Pesadores aprovados visualizam apenas o nome do originador designado. Não consultam a lista de usuários nem escolhem outro responsável. O vínculo pode ser atualizado pelo escritório; registros já enviados continuam com o originador original e somente os novos registros usam o novo vínculo.
 
