@@ -407,6 +407,7 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
             validarNegociacao(dados);
             const origem = doc(db, 'pesagens', pesagemEmConferencia);
             const destino = doc(db, 'romaneios', pesagemEmConferencia);
+            const evento = doc(collection(db, 'romaneios', origem.id, 'historicoEscritorio'));
             enviados = await enviarAnexos(arquivosFilaGlobais, { uid: usuarioAtual.uid, pesagemId: origem.id, financeiro: true });
             await runTransaction(db, async transacao => {
                 const snap = await transacao.get(origem);
@@ -421,8 +422,14 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
                     compradorUid: usuarioAtual.uid, comprador: usuarioAtual.nome,
                     pesadorUid: pesagem.pesadorUid, pesador: pesagem.pesador, pesagemId: snap.id,
                     revisaoValidada: pesagem.revisao || 1,
-                    status: 'enviado_escritorio', timestamp: serverTimestamp(), validadoEm: serverTimestamp()
+                    status: 'enviado_escritorio', timestamp: serverTimestamp(), validadoEm: serverTimestamp(),
+                    etapaEscritorio: 'recebida', responsavelEscritorioUid: null, responsavelEscritorio: null,
+                    finalizadoPorUid: null, finalizadoPor: null, finalizadoEm: null,
+                    etapaAtualizadaEm: serverTimestamp(), etapaAtualizadaPorUid: usuarioAtual.uid,
+                    ultimoEventoEscritorio: evento.id
                 });
+                transacao.set(evento, { tipo: 'validacao_originador', etapa: 'recebida', etapaAnterior: null,
+                    usuarioUid: usuarioAtual.uid, usuario: usuarioAtual.nome, revisao: pesagem.revisao || 1, quando: serverTimestamp() });
                 transacao.update(origem, { status: 'enviado_escritorio', validadoEm: serverTimestamp() });
             });
             gravado = true;
@@ -458,7 +465,12 @@ function puxarPendentes() {
             const btn = document.createElement('button');
             btn.type = 'button'; btn.className = 'btn btn-secundario btn-sm'; btn.textContent = p.validadoEm ? 'Revalidar' : 'Conferir';
             btn.onclick = () => abrirConferencia(p.id);
-            td.appendChild(btn); tr.appendChild(td); tbody.appendChild(tr);
+            td.appendChild(btn);
+            if (p.complementadoEm) {
+                const tag = document.createElement('span'); tag.className = 'tag tag-alerta'; tag.textContent = 'Novos documentos';
+                td.appendChild(document.createTextNode(' ')); td.appendChild(tag);
+            }
+            tr.appendChild(td); tbody.appendChild(tr);
         });
     }, erroSincronizacao);
 }

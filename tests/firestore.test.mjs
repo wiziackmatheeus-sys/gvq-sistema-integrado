@@ -1,12 +1,12 @@
 import { before, after, beforeEach, test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, getDoc, getDocs, collection, query, where, setDoc, updateDoc, writeBatch, serverTimestamp, runTransaction, setLogLevel } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, query, where, setDoc, updateDoc, deleteDoc, writeBatch, serverTimestamp, runTransaction, setLogLevel } from 'firebase/firestore';
 setLogLevel('silent');
 let env;
 export const user = (nome, perfil, aprovado = true, campos = {}) => ({ nome, perfil, aprovado, login: nome.toLowerCase(), ...campos });
 export const pesagem = () => ({ estado: 'SP', cidade: 'Barretos', fazendaDestino: 'Fazenda', cidadeDestino: 'Ibitinga', ufDestino: 'SP', pecuarista: 'João', pecuaristaDocumento: '123', pecuaristaBanco: 'Banco', pecuaristaAgencia: '1', pecuaristaConta: '2', dataCompra: '2026-10-19', dataPagamento: '2026-10-23', cabecas: '2', pesoTotal: '650.50', pesoMedio: '325.25', tipoPesagem: 'individual', sexo: 'Macho', raca: 'F1 Angus', pesosIndividuais: [300, 350.5], observacoes: '', anexos: [], anexosLinks: [], anexosCaminhos: [], compradorUid: 'buyer1', comprador: 'Ana', pesadorUid: 'weigher1', pesador: 'Paulo', revisao: 1, status: 'aguardando_comprador', timestamp: serverTimestamp() });
-export const financeiro = (revisao = 1) => ({ ...pesagem(), precoUnitario: '300', unidadePreco: 'Por Arroba', valorTotalGado: 'R$ 6.505,00', tipoComissao: 'Nenhuma', valorComissao: '0', totalComissao: 'R$ 0,00', corretor: 'Sem corretor', pesagemId: 'p1', revisaoValidada: revisao, status: 'enviado_escritorio', validadoEm: serverTimestamp() });
+export const financeiro = (revisao = 1, evento = "validacao") => ({ ...pesagem(), precoUnitario: '300', unidadePreco: 'Por Arroba', valorTotalGado: 'R$ 6.505,00', tipoComissao: 'Nenhuma', valorComissao: '0', totalComissao: 'R$ 0,00', corretor: 'Sem corretor', pesagemId: 'p1', revisaoValidada: revisao, etapaEscritorio: 'recebida', responsavelEscritorioUid: null, responsavelEscritorio: null, finalizadoPorUid: null, finalizadoPor: null, finalizadoEm: null, etapaAtualizadaPorUid: 'buyer1', etapaAtualizadaEm: serverTimestamp(), ultimoEventoEscritorio: evento, status: 'enviado_escritorio', validadoEm: serverTimestamp() });
 const db = uid => env.authenticatedContext(uid).firestore();
 before(async () => { env = await initializeTestEnvironment({ projectId: 'demo-gvq-tests', firestore: { rules: readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8') } }); });
 after(async () => { await env?.cleanup(); });
@@ -14,7 +14,7 @@ beforeEach(async () => {
     await env.clearFirestore();
     await env.withSecurityRulesDisabled(async context => {
         const d = context.firestore();
-        const usuarios = { buyer1: user('Ana', 'originador'), buyer2: user('Bruno', 'comprador'), weigher1: user('Paulo', 'pesador', true, { compradorUid: 'buyer1', comprador: 'Ana' }), weigher2: user('Pedro', 'pesador', true, { compradorUid: 'buyer2', comprador: 'Bruno' }), waiting: user('Pendente', 'pesador', false), office1: user('Olivia', 'escritorio'), pendingOffice: user('Pendente escritório', 'escritorio', false) };
+        const usuarios = { buyer1: user('Ana', 'originador'), buyer2: user('Bruno', 'comprador'), weigher1: user('Paulo', 'pesador', true, { compradorUid: 'buyer1', comprador: 'Ana' }), weigher2: user('Pedro', 'pesador', true, { compradorUid: 'buyer2', comprador: 'Bruno' }), waiting: user('Pendente', 'pesador', false), office1: user('Olivia', 'escritorio'), office2: user('Paula', 'escritorio'), pendingOffice: user('Pendente escritório', 'escritorio', false) };
         for (const [id, dados] of Object.entries(usuarios)) await setDoc(doc(d, 'usuarios', id), dados);
         await setDoc(doc(d, 'pesagens', 'p1'), pesagem());
         await setDoc(doc(d, 'romaneios', 'legacy'), { comprador: 'Ana', valorTotalGado: 'R$ 100,00' });
@@ -25,7 +25,9 @@ async function validar(revisao = 1) {
     const d = db('buyer1');
     return runTransaction(d, async t => {
         const origem = doc(d, 'pesagens', 'p1'); await t.get(origem);
-        t.set(doc(d, 'romaneios', 'p1'), financeiro(revisao));
+        const evento = doc(collection(d, 'romaneios', 'p1', 'historicoEscritorio'));
+        t.set(doc(d, 'romaneios', 'p1'), financeiro(revisao, evento.id));
+        t.set(evento, { tipo: 'validacao_originador', etapa: 'recebida', etapaAnterior: null, usuarioUid: 'buyer1', usuario: 'Ana', revisao, quando: serverTimestamp() });
         t.update(origem, { status: 'enviado_escritorio', validadoEm: serverTimestamp() });
     });
 }
@@ -116,4 +118,62 @@ test('complementos sucessivos preservam os documentos de revisões anteriores', 
     b.update(doc(d, 'romaneios', 'p1'), { status: 'aguardando_revalidacao', revalidacaoSolicitadaEm: serverTimestamp() });
     await assertSucceeds(b.commit());
     await assertSucceeds(validar(3));
+});
+
+async function etapa(uid, proxima, extras = {}, comHistorico = true) {
+    const d = db(uid), referencia = doc(d, 'romaneios', 'p1');
+    const atual = (await getDoc(doc(db('office1'), 'romaneios', 'p1'))).data();
+    const anterior = atual.etapaEscritorio || 'recebida';
+    const nome = uid === 'office1' ? 'Olivia' : uid === 'office2' ? 'Paula' : uid === 'buyer1' ? 'Ana' : 'Paulo';
+    const evento = doc(collection(d, 'romaneios', 'p1', 'historicoEscritorio'));
+    const campos = { etapaEscritorio: proxima, etapaAtualizadaEm: serverTimestamp(), etapaAtualizadaPorUid: uid, ultimoEventoEscritorio: evento.id };
+    if (proxima === 'em_andamento') Object.assign(campos, { responsavelEscritorioUid: uid, responsavelEscritorio: nome, finalizadoPorUid: null, finalizadoPor: null, finalizadoEm: null });
+    else Object.assign(campos, { finalizadoPorUid: uid, finalizadoPor: nome, finalizadoEm: serverTimestamp() });
+    const b = writeBatch(d); b.update(referencia, { ...campos, ...extras });
+    if (comHistorico) b.set(evento, { tipo: 'etapa_escritorio', etapa: proxima, etapaAnterior: anterior, usuarioUid: uid, usuario: nome, revisao: atual.revisaoValidada || 1, quando: serverTimestamp() });
+    return b.commit();
+}
+test('recepção pelo originador registra Recebida e histórico somente legível pelo escritório', async () => {
+    await assertSucceeds(validar());
+    const p = (await getDoc(doc(db('office1'), 'romaneios', 'p1'))).data();
+    if (p.etapaEscritorio !== 'recebida' || p.responsavelEscritorioUid !== null) throw new Error('Recepção incorreta');
+    const historico = collection(db('office1'), 'romaneios', 'p1', 'historicoEscritorio');
+    const eventos = await assertSucceeds(getDocs(historico));
+    if (eventos.size !== 1) throw new Error('Evento inicial ausente');
+    await assertFails(getDocs(collection(db('buyer1'), 'romaneios', 'p1', 'historicoEscritorio')));
+    await assertFails(getDocs(collection(db('weigher1'), 'romaneios', 'p1', 'historicoEscritorio')));
+});
+test('escritório assume, finaliza e reabre com autoria e histórico imutável', async () => {
+    await validar();
+    await assertSucceeds(etapa('office1', 'em_andamento'));
+    await assertSucceeds(etapa('office2', 'finalizada'));
+    let p = (await getDoc(doc(db('office1'), 'romaneios', 'p1'))).data();
+    if (p.responsavelEscritorioUid !== 'office1' || p.finalizadoPorUid !== 'office2') throw new Error('Autoria incorreta');
+    await assertSucceeds(etapa('office2', 'em_andamento'));
+    p = (await getDoc(doc(db('office1'), 'romaneios', 'p1'))).data();
+    if (p.responsavelEscritorioUid !== 'office2' || p.finalizadoEm !== null) throw new Error('Reabertura incorreta');
+    const eventos = await getDocs(collection(db('office1'), 'romaneios', 'p1', 'historicoEscritorio'));
+    if (eventos.size !== 4) throw new Error('Histórico incompleto');
+    await assertFails(updateDoc(eventos.docs[0].ref, { usuario: 'Alterado' }));
+    await assertFails(deleteDoc(eventos.docs[0].ref));
+});
+test('etapas não permitem saltos, alteração financeira, falsificação ou ausência de histórico', async () => {
+    await validar();
+    await assertFails(etapa('office1', 'finalizada'));
+    await assertFails(etapa('office1', 'em_andamento', {}, false));
+    await assertFails(etapa('office1', 'em_andamento', { precoUnitario: '1' }));
+    await assertFails(etapa('buyer1', 'em_andamento'));
+    await assertFails(etapa('weigher1', 'em_andamento'));
+    await assertSucceeds(etapa('office1', 'em_andamento'));
+    await assertFails(etapa('office1', 'recebida'));
+});
+test('documento após Finalizada exige revalidação e retorna Recebida preservando histórico anterior', async () => {
+    await validar(); await etapa('office1', 'em_andamento'); await etapa('office1', 'finalizada');
+    await assertSucceeds(complemento(db('weigher1')));
+    await assertFails(etapa('office1', 'em_andamento'));
+    await assertSucceeds(validar(2));
+    const p = (await getDoc(doc(db('office1'), 'romaneios', 'p1'))).data();
+    if (p.etapaEscritorio !== 'recebida' || p.finalizadoPorUid !== null || p.revisaoValidada !== 2) throw new Error('Nova revisão não foi recebida corretamente');
+    const eventos = await getDocs(collection(db('office1'), 'romaneios', 'p1', 'historicoEscritorio'));
+    if (eventos.size !== 4) throw new Error('Histórico da finalização anterior foi perdido');
 });

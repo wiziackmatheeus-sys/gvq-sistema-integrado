@@ -16,8 +16,8 @@ export async function signOut(){
  // Simula erros que já estavam enfileirados quando os listeners foram cancelados.
  for(const l of listeners)queueMicrotask(()=>l.error?.(new Error('Missing or insufficient permissions.')));
 }
-export function collection(db,name){return {name}}
-export function doc(a,name,id){return a.name ? {name:a.name,id:'new-id'} : {name,id}}
+export function collection(db,...partes){return {name:partes.join('/')}}
+export function doc(a,...partes){if(a.name)return {name:a.name,id:a.name==='pesagens'?'new-id':'evento-'+(h().autoId=(h().autoId||Object.values(h().data).reduce((n,c)=>Math.max(n,...Object.keys(c).map(k=>Number(k.replace('evento-',''))||0)),0))+1)};const id=partes.pop();return {name:partes.join('/'),id}}
 export function where(field,op,value){return {field,op,value}}
 export function orderBy(){return {}}
 export function query(col,...filters){return {...col,filters}}
@@ -117,6 +117,21 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  console.log('PASS: originador preenche os campos obrigatórios e valida o registro.');
  // Documento posterior retira a compra do escritório e preserva negociação anterior para revalidação.
  data=await b.evaluate(()=>window.__mock.data);
+ // O escritório assume e finaliza antes de o pesador complementar documentos.
+ const {page:processing,errors:pe}=await pageFor('office1','pages/escritorio.html',1280,data);
+ const compra=processing.locator('#tbody-romaneios tr').filter({hasText:'João Pecuarista'});
+ assert.equal(await compra.locator('.col-etapa-escritorio select').inputValue(),'recebida');
+ await compra.locator('.col-etapa-escritorio select').selectOption('em_andamento');await processing.waitForTimeout(30);
+ assert.equal(await processing.evaluate(()=>window.__mock.data.romaneios.p1.responsavelEscritorio),'Olivia Escritório');
+ await compra.locator('.col-etapa-escritorio select').selectOption('finalizada');await processing.waitForTimeout(30);
+ assert.equal(await processing.evaluate(()=>window.__mock.data.romaneios.p1.finalizadoPorUid),'office1');
+ await processing.screenshot({path:path.join(root,'test-results/escritorio-etapas.png'),fullPage:true});
+ await compra.getByRole('button',{name:'Histórico',exact:true}).click();
+ await processing.screenshot({path:path.join(root,'test-results/escritorio-historico.png'),fullPage:true});
+ assert.ok((await processing.locator('#tbody-historico-compra').innerText()).includes('Em andamento → Finalizada'));
+ assert.ok((await processing.locator('#tbody-historico-compra').innerText()).includes('Recebida do originador'));
+ assert.deepEqual(pe,[]);
+ data=await processing.evaluate(()=>window.__mock.data);
  const {page:wc,errors:wce}=await pageFor('weigher1','pages/pesador.html',1280,data);
  await wc.evaluate(()=>window.mostrarTelaHistorico());await wc.getByRole('button',{name:'Anexar documentos'}).click();
  await wc.locator('#input_complementos').setInputFiles({name:'GTA.pdf',mimeType:'application/pdf',buffer:Buffer.from('GTA teste')});
@@ -127,12 +142,26 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  const {page:oc}=await pageFor('office1','pages/escritorio.html',1280,data);
  assert.equal(await oc.locator('#tbody-romaneios input.chk-export').count(),1); // Só legado; p1 ainda em revalidação.
  assert.ok(!(await oc.locator('#tbody-romaneios').innerText()).includes('João Pecuarista'));
- const {page:br,errors:bre}=await pageFor('buyer1','pages/painel.html',1280,data);await br.getByRole('button',{name:'Revalidar',exact:true}).click();
+ const {page:br,errors:bre}=await pageFor('buyer1','pages/painel.html',1280,data);assert.ok((await br.locator('#tbody-pendentes').innerText()).includes('Novos documentos'));await br.getByRole('button',{name:'Revalidar',exact:true}).click();
  assert.equal(await br.locator('#rom_preco').inputValue(),'300');assert.equal(await br.locator('#rom_tipo_pesagem').inputValue(),'balancao');
  assert.equal(await br.locator('#lista-arquivos-ui a').count(),1);
  await br.locator('#btn-registrar').click();await br.waitForTimeout(40);
  assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.revisaoValidada),2);assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.anexosLinks.length),1);assert.deepEqual(bre,[]);
  console.log('PASS: complementação com upload simulado, bloqueio no escritório e revalidação sem perder negociação.');
+ assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.etapaEscritorio),'recebida');
+ assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.finalizadoPorUid),null);
+ data=await br.evaluate(()=>window.__mock.data);
+ const {page:returned}=await pageFor('office1','pages/escritorio.html',1280,data);
+ const nova=returned.locator('#tbody-romaneios tr').filter({hasText:'João Pecuarista'});
+ assert.equal(await nova.locator('.col-etapa-escritorio select').inputValue(),'recebida');
+ assert.ok((await nova.innerText()).includes('Nova revisão de documentos'));
+ await nova.getByRole('button',{name:'Histórico',exact:true}).click();
+ const registros=returned.locator('#tbody-historico-compra');
+ assert.equal(await registros.locator('tr').count(),4);
+ assert.ok((await registros.innerText()).includes('Recebida após revalidação'));
+ assert.ok((await registros.innerText()).includes('Em andamento → Finalizada'));
+ console.log('PASS: compra finalizada recebe anexos, retorna Recebida após revalidação e preserva todo o histórico.');
+
  // Timestamp técnico e ordem dos campos podem variar entre leitura normal e transação.
  const {page:timestampPage,alerts:ta}=await pageFor('buyer1','pages/painel.html',1280,JSON.parse(JSON.stringify({ ...seed('buyer1').data,
      pesagens:{p1:{...pending,tipoPesagem:'balancao',pesosIndividuais:[],timestamp:null}}
@@ -155,6 +184,12 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
   await stale.close();
  }
  console.log('PASS: balanção inalterado valida com chaves/timestamps diferentes; mudanças reais continuam bloqueadas.');
+ const {page:reopen}=await pageFor('office1','pages/escritorio.html',1280,await processing.evaluate(()=>window.__mock.data));
+ const finalizada=reopen.locator('#tbody-romaneios tr').filter({hasText:'João Pecuarista'});
+ await finalizada.locator('.col-etapa-escritorio select').selectOption('em_andamento');await reopen.waitForTimeout(30);
+ assert.equal(await reopen.evaluate(()=>window.__mock.data.romaneios.p1.etapaEscritorio),'em_andamento');
+ assert.equal(await reopen.evaluate(()=>window.__mock.data.romaneios.p1.finalizadoEm),null);
+ console.log('PASS: escritório reabre compra finalizada sem apagar o histórico.');
  // Falha de upload não cria registro nem declara sucesso.
  const {page:fail,alerts:fa}=await pageFor('weigher1','pages/pesador.html');await fillOperacional(fail);await fail.evaluate(()=>window.__mock.failUpload=true);
  await fail.locator('#input_arquivos').setInputFiles({name:'GTA.pdf',mimeType:'application/pdf',buffer:Buffer.from('teste')});await fail.locator('#btn-registrar').click();await fail.waitForTimeout(20);

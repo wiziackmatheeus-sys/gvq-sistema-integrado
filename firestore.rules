@@ -35,6 +35,40 @@ service cloud.firestore {
         && ((d.tipoPesagem == 'balancao' && d.pesosIndividuais.size() == 0)
           || (d.tipoPesagem == 'individual' && d.pesosIndividuais.size() == int(d.cabecas)));
     }
+    function etapaValida(anterior, proxima) {
+      return (anterior == 'recebida' && proxima == 'em_andamento')
+        || (anterior == 'em_andamento' && proxima == 'finalizada')
+        || (anterior == 'finalizada' && proxima == 'em_andamento');
+    }
+    function recepcaoValida(id) {
+      let d = request.resource.data;
+      let e = getAfter(/databases/$(database)/documents/romaneios/$(id)/historicoEscritorio/$(d.ultimoEventoEscritorio)).data;
+      return d.etapaEscritorio == 'recebida' && d.responsavelEscritorioUid == null && d.responsavelEscritorio == null
+        && d.finalizadoPorUid == null && d.finalizadoPor == null && d.finalizadoEm == null
+        && d.etapaAtualizadaEm == request.time && d.etapaAtualizadaPorUid == request.auth.uid
+        && e.tipo == 'validacao_originador' && e.etapa == 'recebida' && e.etapaAnterior == null
+        && e.usuarioUid == request.auth.uid && e.usuario == usuario().nome && e.quando == request.time
+        && e.revisao == d.revisaoValidada;
+    }
+    function alteracaoEscritorioValida(id) {
+      let d = request.resource.data;
+      let anterior = resource.data.get('etapaEscritorio', 'recebida');
+      let e = getAfter(/databases/$(database)/documents/romaneios/$(id)/historicoEscritorio/$(d.ultimoEventoEscritorio)).data;
+      return escritorio() && resource.data.get('status', 'enviado_escritorio') == 'enviado_escritorio'
+        && d.diff(resource.data).affectedKeys().hasOnly(['etapaEscritorio', 'responsavelEscritorioUid', 'responsavelEscritorio',
+          'finalizadoPorUid', 'finalizadoPor', 'finalizadoEm', 'etapaAtualizadaEm', 'etapaAtualizadaPorUid', 'ultimoEventoEscritorio'])
+        && etapaValida(anterior, d.etapaEscritorio)
+        && d.etapaAtualizadaEm == request.time && d.etapaAtualizadaPorUid == request.auth.uid
+        && d.ultimoEventoEscritorio != resource.data.get('ultimoEventoEscritorio', '')
+        && e.tipo == 'etapa_escritorio' && e.etapa == d.etapaEscritorio && e.etapaAnterior == anterior
+        && e.usuarioUid == request.auth.uid && e.usuario == usuario().nome && e.quando == request.time
+        && e.revisao == resource.data.get('revisaoValidada', 1)
+        && ((d.etapaEscritorio == 'em_andamento' && d.responsavelEscritorioUid == request.auth.uid
+             && d.responsavelEscritorio == usuario().nome && d.finalizadoPorUid == null && d.finalizadoPor == null && d.finalizadoEm == null)
+          || (d.etapaEscritorio == 'finalizada' && d.responsavelEscritorioUid == resource.data.responsavelEscritorioUid
+             && d.responsavelEscritorio == resource.data.responsavelEscritorio
+             && d.finalizadoPorUid == request.auth.uid && d.finalizadoPor == usuario().nome && d.finalizadoEm == request.time));
+    }
     function finalizacaoValida(id) {
       let d = request.resource.data;
       let p = get(/databases/$(database)/documents/pesagens/$(id)).data;
@@ -44,6 +78,7 @@ service cloud.firestore {
         && d.pesadorUid == p.pesadorUid && d.pesador == p.pesador
         && d.revisaoValidada == p.get('revisao', 1)
         && d.status == 'enviado_escritorio' && d.validadoEm == request.time && d.timestamp == request.time
+        && recepcaoValida(id)
         && depois.status == 'enviado_escritorio' && depois.validadoEm == request.time
         && operacionaisValidos(d)
         && float(d.precoUnitario) > 0 && d.unidadePreco in ['Por Kg', 'Por Arroba', 'Por Cabeça']
@@ -107,7 +142,7 @@ service cloud.firestore {
       // as versões em revalidação. Nenhum documento novo do pesador chega aqui antes da validação.
       allow read: if escritorio() || (originador() && resource.data.compradorUid == request.auth.uid);
       allow create: if finalizacaoValida(id);
-      allow update: if (resource.data.status == 'aguardando_revalidacao' && finalizacaoValida(id)) || (
+      allow update: if (escritorio() && alteracaoEscritorioValida(id)) || (resource.data.get('status', '') == 'aguardando_revalidacao' && finalizacaoValida(id)) || (
         pesador() && resource.data.pesadorUid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'revalidacaoSolicitadaEm'])
         && request.resource.data.status == 'aguardando_revalidacao' && request.resource.data.revalidacaoSolicitadaEm == request.time
@@ -116,6 +151,25 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/pesagens/$(id)).data.revisao > get(/databases/$(database)/documents/pesagens/$(id)).data.get('revisao', 1)
       );
       allow delete: if false;
+    }
+    match /romaneios/{id}/historicoEscritorio/{eventoId} {
+      allow read: if escritorio();
+      allow create: if logado()
+        && request.resource.data.keys().hasOnly(['tipo', 'etapa', 'etapaAnterior', 'usuarioUid', 'usuario', 'revisao', 'quando'])
+        && request.resource.data.usuarioUid == request.auth.uid && request.resource.data.usuario == usuario().nome
+        && request.resource.data.quando == request.time
+        && getAfter(/databases/$(database)/documents/romaneios/$(id)).data.ultimoEventoEscritorio == eventoId
+        && getAfter(/databases/$(database)/documents/romaneios/$(id)).data.etapaEscritorio == request.resource.data.etapa
+        && getAfter(/databases/$(database)/documents/romaneios/$(id)).data.etapaAtualizadaEm == request.time
+        && request.resource.data.revisao == getAfter(/databases/$(database)/documents/romaneios/$(id)).data.get('revisaoValidada', 1)
+        && ((escritorio() && request.resource.data.tipo == 'etapa_escritorio'
+             && request.resource.data.etapaAnterior == get(/databases/$(database)/documents/romaneios/$(id)).data.get('etapaEscritorio', 'recebida')
+             && etapaValida(request.resource.data.etapaAnterior, request.resource.data.etapa))
+          || (originador() && request.resource.data.tipo == 'validacao_originador'
+             && request.resource.data.etapa == 'recebida' && request.resource.data.etapaAnterior == null
+             && getAfter(/databases/$(database)/documents/romaneios/$(id)).data.compradorUid == request.auth.uid
+             && getAfter(/databases/$(database)/documents/romaneios/$(id)).data.validadoEm == request.time));
+      allow update, delete: if false;
     }
     match /pecuaristas/{id} { allow read: if operacional(); allow write: if escritorio(); }
     match /destinos/{id} { allow read: if operacional(); allow write: if escritorio(); }
