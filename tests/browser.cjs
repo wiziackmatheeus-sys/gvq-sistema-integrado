@@ -5,11 +5,17 @@ const baseline = process.env.GVQ_BASE_REF;
 const original = baseline ? require('child_process').execFileSync('git', ['show', baseline+':pages/painel.html'], {cwd:root, encoding:'utf8'}) : null;
 const firebaseMock = `
 const h=()=>window.__mock;
-const listeners=[];
-export const auth={get currentUser(){return {uid:h().uid}},signOut:async()=>{h().signedOut=true;}};
+const listeners=h().listeners||(h().listeners=[]);
+export const auth={get currentUser(){return h().uid?{uid:h().uid}:null},signOut:async()=>{h().signedOut=true;}};
 export const db={}, storage={};
 export function onAuthStateChanged(a,callback){queueMicrotask(()=>callback({uid:h().uid}));return ()=>{}}
-export async function signOut(){h().signedOut=true;}
+export async function signOut(){
+ if(h().failSignOut){const antigos=[...listeners];setTimeout(()=>antigos.forEach(l=>l.error?.(new Error('Missing or insufficient permissions.'))),10);throw new Error('Falha simulada de saída')}
+ localStorage.setItem('teste_listeners_no_logout',String(listeners.filter(l=>l.ativo).length));
+ h().signedOut=true;h().uid=null;
+ // Simula erros que já estavam enfileirados quando os listeners foram cancelados.
+ for(const l of listeners)queueMicrotask(()=>l.error?.(new Error('Missing or insufficient permissions.')));
+}
 export function collection(db,name){return {name}}
 export function doc(a,name,id){return a.name ? {name:a.name,id:'new-id'} : {name,id}}
 export function where(field,op,value){return {field,op,value}}
@@ -18,9 +24,9 @@ export function query(col,...filters){return {...col,filters}}
 export function serverTimestamp(){return 'SERVER_TIME'}
 function snap(name,id){const data=h().data[name]?.[id];return {id,exists:()=>!!data,data:()=>structuredClone(data)}}
 function emit(ref,callback){const docs=Object.entries(h().data[ref.name]||{}).filter(([id,d])=>(ref.filters||[]).every(f=>!f.field||(f.op==='in'?f.value.includes(d[f.field]):d[f.field]===f.value))).map(([id])=>snap(ref.name,id));callback({docs,empty:!docs.length,forEach:f=>docs.forEach(f)})}
-function notify(){for(const {ref,callback} of listeners)emit(ref,callback)}
+function notify(){for(const {ref,callback,ativo} of listeners)if(ativo)emit(ref,callback)}
 export async function getDoc(ref){h().reads.push(ref);return snap(ref.name,ref.id)}
-export function onSnapshot(ref,callback,error){h().reads.push(ref);listeners.push({ref,callback});emit(ref,callback);return ()=>{}}
+export function onSnapshot(ref,callback,error){h().reads.push(ref);const l={ref,callback,error,ativo:true};listeners.push(l);emit(ref,callback);return ()=>{l.ativo=false}}
 export async function setDoc(ref,data){h().writes.push({name:ref.name,id:ref.id,data});h().data[ref.name]??={};h().data[ref.name][ref.id]=structuredClone(data);notify()}
 export async function addDoc(ref,data){return setDoc({...ref,id:'new-id'},data)}
 export async function runTransaction(db,callback){
@@ -157,6 +163,38 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  // URLs de outro perfil e contas não aprovadas são redirecionadas.
  for(const [uid,file,target] of [['weigher1','pages/painel.html','pesador.html'],['weigher1','pages/escritorio.html','pesador.html'],['buyer2','pages/pesador.html','painel.html'],['pendingOffice','pages/escritorio.html','index.html']]){const {page}=await pageFor(uid,file);await page.waitForURL('**/'+target);await page.close()}
  console.log('PASS: perfis antigos e novos respeitam os redirecionamentos.');
+ // Sair cancela consultas antes da autenticação desaparecer, nos três perfis.
+ for (const [uid,file] of [['weigher1','pages/pesador.html'],['buyer1','pages/painel.html'],['office1','pages/escritorio.html']]) {
+  const {page:logout,alerts:la,errors:le}=await pageFor(uid,file);
+  assert.ok(await logout.evaluate(()=>window.__mock.listeners.filter(l=>l.ativo).length)>0);
+  await logout.evaluate(()=>{localStorage.setItem('gvq_sistema_logado','Usuário');localStorage.setItem('gvq_sistema_perfil','perfil');localStorage.setItem('outro_app_dado','preservar')});
+  await logout.getByRole('button',{name:'Sair',exact:true}).click();await logout.waitForURL('**/index.html');
+  assert.equal(await logout.evaluate(()=>localStorage.getItem('teste_listeners_no_logout')),'0');
+  assert.equal(await logout.evaluate(()=>localStorage.getItem('gvq_sistema_logado')),null);
+  assert.equal(await logout.evaluate(()=>localStorage.getItem('gvq_sistema_perfil')),null);
+  assert.equal(await logout.evaluate(()=>localStorage.getItem('outro_app_dado')),'preservar');
+  assert.deepEqual(la,[],uid+': logout não deve mostrar erros de permissão');assert.deepEqual(le,[]);
+  await logout.close();
+ }
+ console.log('PASS: logout dos três perfis cancela listeners, ignora callbacks tardios e mantém dados de outros apps.');
+ // Falhas reais continuam sendo avisadas enquanto a sessão está ativa.
+ const {page:permission,alerts:pa}=await pageFor('buyer1','pages/painel.html');
+ await permission.evaluate(()=>window.__mock.listeners.find(l=>l.ativo).error(new Error('Missing or insufficient permissions.')));
+ assert.ok(pa.some(a=>a.includes('Missing or insufficient permissions')));
+ await permission.close();
+ // Se o logout falhar, a sessão e suas consultas continuam funcionando.
+ const {page:logoutFail,alerts:lfa}=await pageFor('buyer1','pages/painel.html');
+ const antes=await logoutFail.evaluate(()=>window.__mock.listeners.filter(l=>l.ativo).length);
+ await logoutFail.evaluate(()=>window.__mock.failSignOut=true);
+ await logoutFail.getByRole('button',{name:'Sair',exact:true}).click();await logoutFail.waitForTimeout(30);
+ assert.ok(logoutFail.url().endsWith('/pages/painel.html'));
+ assert.equal(await logoutFail.evaluate(()=>window.__mock.listeners.filter(l=>l.ativo).length),antes);
+ assert.ok(lfa.some(a=>a.includes('Não foi possível sair da conta')));
+ assert.equal(lfa.filter(a=>a.includes('Missing or insufficient permissions')).length,0);
+ await logoutFail.evaluate(()=>window.__mock.failSignOut=false);
+ await logoutFail.getByRole('button',{name:'Sair',exact:true}).click();await logoutFail.waitForURL('**/index.html');
+ assert.equal(await logoutFail.evaluate(()=>localStorage.getItem('teste_listeners_no_logout')),'0');
+ console.log('PASS: erros reais de acesso permanecem visíveis; falha de logout restaura as consultas e permite tentar novamente.');
  // Obrigatoriedade: anexos e observações são opcionais; raça extra só quando Outra.
  const {page:required}=await pageFor('weigher1','pages/pesador.html');
  assert.deepEqual(await required.locator('#form-romaneio input:not([type=file]):not(#rom_raca_outra),#form-romaneio select').evaluateAll(els=>els.filter(e=>!e.required).map(e=>e.id)),[]);

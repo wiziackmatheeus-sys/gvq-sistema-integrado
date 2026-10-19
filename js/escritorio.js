@@ -1,12 +1,14 @@
-import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { collection, addDoc, query, orderBy, serverTimestamp, doc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
+import { criarControleSessao } from './sessao.js';
 import { exigirPerfil } from "./auth-guard.js";
 import { escapeHtml, pesoMedio } from "./fluxo-compra.js";
 
 let pecuaristasGlobais = [];
 let destinosGlobais = [];
 let romaneiosGlobais = [];
+const sessao = criarControleSessao(error => alert('Não foi possível carregar os dados: ' + error.message));
 
 const bancosBrasileiros = [
     "BANCO DO BRASIL S.A. - 001", "CAIXA ECONOMICA FEDERAL - 104", "BANCO BRADESCO S.A. - 237",
@@ -19,8 +21,9 @@ const bancosBrasileiros = [
 
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        const perfil = await exigirPerfil(user, ['escritorio']);
-        if (!perfil) return;
+        const sessaoValida = sessao.iniciar();
+        const perfil = await exigirPerfil(user, ['escritorio'], sessaoValida);
+        if (!perfil || !sessaoValida()) return;
         let logado = perfil.nome;
         document.getElementById('nome-usuario').innerText = 'Olá, ' + logado.split(' ')[0];
         
@@ -29,6 +32,7 @@ onAuthStateChanged(auth, async (user) => {
         iniciarSincronizacaoEmTempoReal();
         sincronizarPesadores();
     } else {
+        sessao.encerrar();
         window.location.href = '../index.html';
     }
 });
@@ -97,13 +101,11 @@ window.mostrarTela = function(telaId) {
     document.getElementById(`btn-tab-${telaId}`).setAttribute('aria-current', 'page');
 }
 
-window.sair = function() {
-    signOut(auth).then(() => { localStorage.clear(); window.location.href = '../index.html'; });
-}
+window.sair = sessao.sair;
 
 function iniciarSincronizacaoEmTempoReal() {
     const qPec = query(collection(db, "pecuaristas"), orderBy("nome", "asc"));
-    onSnapshot(qPec, (snapshot) => {
+    sessao.observar(qPec, (snapshot) => {
         pecuaristasGlobais = [];
         let tbody = document.getElementById('tbody-pecuaristas');
         tbody.innerHTML = '';
@@ -121,7 +123,7 @@ function iniciarSincronizacaoEmTempoReal() {
     });
 
     const qDest = query(collection(db, "destinos"), orderBy("nome", "asc"));
-    onSnapshot(qDest, (snapshot) => {
+    sessao.observar(qDest, (snapshot) => {
         destinosGlobais = [];
         let tbody = document.getElementById('tbody-destinos');
         tbody.innerHTML = '';
@@ -139,7 +141,7 @@ function iniciarSincronizacaoEmTempoReal() {
     });
 
     const qRom = query(collection(db, "romaneios")); 
-    onSnapshot(qRom, (snapshot) => {
+    sessao.observar(qRom, (snapshot) => {
         romaneiosGlobais = [];
         let tbody = document.getElementById('tbody-romaneios');
         tbody.innerHTML = '';
@@ -331,7 +333,7 @@ function validarCadastro(prefixo) {
     return true;
 }
 function sincronizarPesadores() {
-    onSnapshot(collection(db, 'usuarios'), snapshot => {
+    sessao.observar(collection(db, 'usuarios'), snapshot => {
         const usuarios = snapshot.docs.map(d => ({ ...d.data(), uid: d.id }));
         const originadores = usuarios.filter(u => ['originador', 'comprador'].includes(u.perfil) && u.aprovado === true)
             .sort((a, b) => a.nome.localeCompare(b.nome));
