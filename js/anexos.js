@@ -1,16 +1,19 @@
+import { categoriaDocumento } from './documentos.js';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 import { storage } from './firebase.js';
 
 export async function enviarAnexos(arquivos, { uid, pesagemId, financeiro = false }) {
     const enviados = [];
     try {
-        for (const arquivo of arquivos) {
+        for (const entrada of arquivos) {
+            const arquivo = entrada.arquivo || entrada;
+            const categoria = categoriaDocumento(entrada);
             if (arquivo.size > 25 * 1024 * 1024) throw new Error(`O arquivo ${arquivo.name} ultrapassa 25 MB.`);
             const caminho = `${financeiro ? 'negociacoes' : 'pesagens'}/${pesagemId}/${uid}/${crypto.randomUUID()}`;
             const destino = ref(storage, caminho);
-            await uploadBytes(destino, arquivo, { contentType: arquivo.type || 'application/octet-stream', customMetadata: { nomeOriginal: arquivo.name } });
+            await uploadBytes(destino, arquivo, { contentType: arquivo.type || 'application/octet-stream', customMetadata: { nomeOriginal: arquivo.name, categoria } });
             // Registrar o caminho antes de obter a URL para limpar também em caso de falha na URL.
-            enviados.push({ nomeArquivo: arquivo.name, caminho });
+            enviados.push({ nomeArquivo: arquivo.name, caminho, categoria });
             enviados[enviados.length - 1].urlDownload = await getDownloadURL(destino);
         }
         return enviados;

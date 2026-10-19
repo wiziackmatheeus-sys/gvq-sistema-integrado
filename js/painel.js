@@ -1,3 +1,4 @@
+import { montarCamposDocumentos, atualizarSituacaoDocumentos, nomeDocumento } from './documentos.js';
 import { gerarCodigoCompra } from './codigo-compra.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, runTransaction, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -18,6 +19,7 @@ const ehPesador = document.body.dataset.perfil === 'pesador';
 let usuarioAtual = null;
 let anexosLinksExistentes = [];
 let complementoId = null;
+let documentosComplemento = [];
 let pesagensPendentes = [];
 let pesagemEmConferencia = null;
 let pesagemOriginal = null;
@@ -170,7 +172,7 @@ window.preencherPecuarista = function() {
 
 window.adicionarAnexosFila = function(event) {
     let files = event.target.files;
-    for(let i = 0; i < files.length; i++) { arquivosFilaGlobais.push(files[i]); }
+    for(let i = 0; i < files.length; i++) { arquivosFilaGlobais.push({ arquivo: files[i], categoria: event.target.dataset.categoria || 'outros' }); }
     event.target.value = ''; 
     renderizarFilaArquivos();
 }
@@ -183,24 +185,27 @@ window.removerAnexoFila = function(index) {
 function renderizarFilaArquivos() {
     let divUi = document.getElementById('lista-arquivos-ui');
     divUi.innerHTML = '';
-    anexosExistentes.forEach(nome => {
+    const existentes = [...anexosLinksExistentes, ...anexosExistentes.filter(nome => !anexosLinksExistentes.some(a => a.nomeArquivo === nome)).map(nomeArquivo => ({ nomeArquivo }))];
+    existentes.forEach(anexo => {
+        const nome = anexo.nomeArquivo;
         const item = document.createElement('div'); item.className = 'item-anexo';
         const texto = document.createElement('span'); texto.className = 'item-anexo-texto';
-        texto.textContent = nome; item.appendChild(texto);
-        const anexo = anexosLinksExistentes.find(a => a.nomeArquivo === nome);
+        texto.textContent = nomeDocumento(anexo) + ': ' + nome; item.appendChild(texto);
         if (anexo) { const link = criarLinkAnexo(anexo); if (link) item.appendChild(link); }
         divUi.appendChild(item);
     });
-    arquivosFilaGlobais.forEach((file, index) => {
+    arquivosFilaGlobais.forEach((entrada, index) => {
+        const file = entrada.arquivo;
         let tamanhoMB = (file.size / (1024 * 1024)).toFixed(2);
         divUi.innerHTML += `
             <div class="item-anexo">
                 <span class="item-anexo-icone"><svg class="icon icon-sm"><use href="../assets/img/icones.svg#anexo"></use></svg></span>
-                <span class="item-anexo-texto"><strong>${escapeHtml(file.name)}</strong><span class="item-anexo-tamanho">${tamanhoMB} MB</span></span>
+                <span class="item-anexo-texto"><strong>${escapeHtml(nomeDocumento(entrada))}: ${escapeHtml(file.name)}</strong><span class="item-anexo-tamanho">${tamanhoMB} MB</span></span>
                 <button type="button" class="btn-remover-anexo" onclick="removerAnexoFila(${index})" title="Remover arquivo" aria-label="Remover arquivo"><svg class="icon icon-sm"><use href="../assets/img/icones.svg#fechar"></use></svg></button>
             </div>
         `;
     });
+    atualizarSituacaoDocumentos('campos-documentos', [...existentes, ...arquivosFilaGlobais]);
 }
 
 window.sair = sessao.sair;
@@ -349,7 +354,7 @@ function lerFormulario() {
         cabecas: valor('rom_cabecas'), pesoTotal: valor('rom_peso_total'), sexo: valor('rom_sexo'),
         raca: valor('rom_raca') === 'outro' ? valor('rom_raca_outra').trim() : valor('rom_raca'),
         pesosIndividuais: [...pesosAdicionadosGlobais], observacoes: valor('rom_obs'),
-        anexos: [...anexosExistentes, ...arquivosFilaGlobais.map(a => a.name)],
+        anexos: [...anexosExistentes, ...arquivosFilaGlobais.map(a => a.arquivo.name)],
         precoUnitario: valor('rom_preco'), unidadePreco: valor('rom_unidade_preco'), valorTotalGado: valor('rom_valor_total'),
         corretor: valor('rom_corretor'), tipoComissao: valor('rom_tipo_comissao'),
         valorComissao: valor('rom_valor_comissao'), totalComissao: valor('rom_total_comissao')
@@ -580,25 +585,33 @@ async function abrirComplementos(id) {
         complementoId = id;
         document.getElementById('form-complementos').reset();
         document.getElementById('lista-complementos').replaceChildren();
+        documentosComplemento = snap.data().anexosLinks || [];
+        atualizarSituacaoDocumentos('campos-complementos', documentosComplemento);
         document.getElementById('complemento-pecuarista').textContent = snap.data().pecuarista;
         const lista = document.getElementById('documentos-existentes'); lista.replaceChildren();
         (snap.data().anexosLinks || []).forEach(anexo => {
             const linha = document.createElement('div'); linha.className = 'item-anexo';
-            const texto = document.createElement('span'); texto.className = 'item-anexo-texto'; texto.textContent = anexo.nomeArquivo;
+            const texto = document.createElement('span'); texto.className = 'item-anexo-texto'; texto.textContent = nomeDocumento(anexo) + ': ' + anexo.nomeArquivo;
             linha.appendChild(texto); const link = criarLinkAnexo(anexo); if (link) linha.appendChild(link); lista.appendChild(linha);
         });
         abrirTela('tela-documentos', 'nav-historico');
     } catch (error) { alert(error.message); }
 }
+function arquivosComplementares() {
+    return [...document.querySelectorAll('#campos-complementos input[type=file]')]
+        .flatMap(input => [...input.files].map(arquivo => ({ arquivo, categoria: input.dataset.categoria })));
+}
 window.listarComplementos = function() {
+    atualizarSituacaoDocumentos('campos-complementos', [...documentosComplemento, ...arquivosComplementares()]);
     const lista = document.getElementById('lista-complementos'); lista.replaceChildren();
-    [...document.getElementById('input_complementos').files].forEach(file => {
-        const item = document.createElement('div'); item.className = 'item-anexo'; item.textContent = file.name; lista.appendChild(item);
+    arquivosComplementares().forEach(entrada => {
+        const item = document.createElement('div'); item.className = 'item-anexo';
+        item.textContent = nomeDocumento(entrada) + ': ' + entrada.arquivo.name; lista.appendChild(item);
     });
 }
 if (ehPesador) document.getElementById('form-complementos').addEventListener('submit', async e => {
     e.preventDefault();
-    const arquivos = [...document.getElementById('input_complementos').files];
+    const arquivos = arquivosComplementares();
     if (!arquivos.length) return alert('Selecione pelo menos um documento para complementar.');
     const btn = document.getElementById('btn-complementar'); btn.disabled = true; btn.textContent = 'Enviando...';
     let enviados = []; let gravado = false;
@@ -623,3 +636,6 @@ if (ehPesador) document.getElementById('form-complementos').addEventListener('su
     } catch (error) { if (!gravado) await limparUploads(enviados); alert('Erro ao complementar: ' + error.message); }
     finally { btn.disabled = false; btn.textContent = 'Enviar para revalidação'; }
 });
+
+montarCamposDocumentos('campos-documentos', 'input_arquivos', window.adicionarAnexosFila);
+if (ehPesador) montarCamposDocumentos('campos-complementos', 'input_complementos', window.listarComplementos);

@@ -191,3 +191,12 @@ test('código da compra é obrigatório e permanece imutável na revalidação e
     const compra = (await getDoc(doc(d, 'romaneios', 'p1'))).data();
     if (compra.codigoCompra !== 'OC-FAZENDA-202610-p1') throw new Error('Código alterado');
 });
+
+test('categorias dos documentos são aceitas na pesagem e no complemento sem tornar anexos obrigatórios', async () => {
+    const anexo = { nomeArquivo: 'GTA.pdf', categoria: 'gta', caminho: 'pesagens/p1/weigher1/f1', urlDownload: 'https://example.test/GTA.pdf' };
+    await assertSucceeds(setDoc(doc(db('weigher1'), 'pesagens', 'com-nota'), { ...pesagem(), anexos: ['nota.pdf'], anexosLinks: [{ ...anexo, nomeArquivo: 'nota.pdf', categoria: 'nota_fiscal' }], anexosCaminhos: [anexo.caminho] }));
+    await assertSucceeds(complemento(db('weigher1'), { anexosLinks: [anexo] }, false));
+    const dados = (await getDoc(doc(db('buyer1'), 'pesagens', 'p1'))).data();
+    if (dados.anexosLinks[0].categoria !== 'gta') throw new Error('Categoria não preservada');
+    await assertSucceeds(setDoc(doc(db('weigher1'), 'pesagens', 'sem-anexos'), pesagem()));
+});
