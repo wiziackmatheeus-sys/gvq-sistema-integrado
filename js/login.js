@@ -1,6 +1,7 @@
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
+import { paginas } from "./auth-guard.js";
 
 window.switchTab = function(tab) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); 
@@ -49,8 +50,10 @@ document.getElementById('form-cadastro').addEventListener('submit', async (e) =>
             nome: nome,
             login: login,
             perfil: perfil,
-            aprovado: (perfil === 'comprador')
+            aprovado: (perfil === 'comprador' || perfil === 'pesador')
         });
+
+        await auth.signOut();
 
         if(perfil === 'escritorio') { 
             alert('Cadastro solicitado com sucesso! Contas de Escritório precisam de aprovação.'); 
@@ -96,7 +99,7 @@ document.getElementById('form-login').addEventListener('submit', async (e) => {
         if (docSnap.exists()) {
             const userData = docSnap.data();
             
-            if(userData.perfil === 'escritorio' && !userData.aprovado) {
+            if(!paginas[userData.perfil] || userData.aprovado !== true) {
                 alert('A sua conta está em análise. Aguarde aprovação da administração.');
                 await auth.signOut();
                 btn.innerText = "Entrar";
@@ -107,7 +110,7 @@ document.getElementById('form-login').addEventListener('submit', async (e) => {
             localStorage.setItem('gvq_sistema_logado', userData.nome);
             localStorage.setItem('gvq_sistema_perfil', userData.perfil);
             
-            window.location.href = userData.perfil === 'escritorio' ? 'pages/escritorio.html' : 'pages/painel.html';
+            window.location.href = 'pages/' + paginas[userData.perfil];
         } else {
             alert("Perfil não encontrado no banco de dados.");
             await auth.signOut();
@@ -119,3 +122,4 @@ document.getElementById('form-login').addEventListener('submit', async (e) => {
         btn.disabled = false;
     }
 });
+

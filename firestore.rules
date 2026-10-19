@@ -1,0 +1,88 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function logado() { return request.auth != null; }
+    function usuario() { return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data; }
+    function perfil(nome) { return logado() && usuario().perfil == nome && usuario().aprovado == true; }
+    function comprador() { return perfil('comprador'); }
+    function pesador() { return perfil('pesador'); }
+    function escritorio() { return perfil('escritorio'); }
+    function operacional() { return comprador() || pesador() || escritorio(); }
+    function compradorValido(uid) {
+      let u = get(/databases/$(database)/documents/usuarios/$(uid)).data;
+      return u.perfil == 'comprador' && u.aprovado == true;
+    }
+    function camposPesagem() {
+      return ['estado', 'cidade', 'fazendaDestino', 'cidadeDestino', 'ufDestino',
+              'pecuarista', 'dataCompra', 'dataPagamento', 'cabecas', 'pesoTotal',
+              'sexo', 'raca', 'pesosIndividuais', 'observacoes', 'anexos',
+              'compradorUid', 'comprador', 'pesadorUid', 'pesador', 'status', 'timestamp'];
+    }
+    match /usuarios/{uid} {
+      allow read: if logado() && (request.auth.uid == uid || escritorio() ||
+        (operacional() && resource.data.perfil == 'comprador' && resource.data.aprovado == true));
+      allow create: if logado() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['nome', 'login', 'perfil', 'aprovado'])
+        && request.resource.data.nome is string && request.resource.data.nome.size() > 0
+        && request.resource.data.login is string
+        && request.resource.data.perfil in ['comprador', 'pesador', 'escritorio']
+        && request.resource.data.aprovado == (request.resource.data.perfil in ['comprador', 'pesador']);
+      // Aprovação e mudanças de perfil somente pelo administrador no Firebase.
+      allow update, delete: if false;
+    }
+    match /pesagens/{id} {
+      allow read: if (pesador() && resource.data.pesadorUid == request.auth.uid)
+        || (comprador() && resource.data.compradorUid == request.auth.uid);
+      allow create: if pesador()
+        && request.resource.data.keys().hasAll(camposPesagem())
+        && request.resource.data.keys().hasOnly(camposPesagem())
+        && request.resource.data.pesadorUid == request.auth.uid
+        && request.resource.data.pesador == usuario().nome
+        && compradorValido(request.resource.data.compradorUid)
+        && request.resource.data.comprador == get(/databases/$(database)/documents/usuarios/$(request.resource.data.compradorUid)).data.nome
+        && request.resource.data.status == 'aguardando_comprador'
+        && request.resource.data.timestamp == request.time
+        && request.resource.data.pesosIndividuais is list
+        && request.resource.data.pesosIndividuais.size() > 0;
+      allow update: if comprador()
+        && resource.data.compradorUid == request.auth.uid
+        && resource.data.status == 'aguardando_comprador'
+        && request.resource.data.status == 'enviado_escritorio'
+        && request.resource.data.validadoEm == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'validadoEm'])
+        && getAfter(/databases/$(database)/documents/romaneios/$(id)).data.compradorUid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/romaneios/$(id)).data.pesagemId == id
+        && getAfter(/databases/$(database)/documents/romaneios/$(id)).data.status == 'enviado_escritorio';
+      allow delete: if false;
+    }
+    match /romaneios/{id} {
+      // Nunca conceder leitura ao pesador: Firestore não oculta campos de um documento.
+      allow read: if escritorio() || (comprador() && resource.data.compradorUid == request.auth.uid);
+      allow create: if comprador()
+        && request.resource.data.keys().hasAll(['compradorUid', 'comprador', 'pesadorUid', 'pesador', 'pesagemId', 'status', 'precoUnitario', 'unidadePreco', 'validadoEm', 'timestamp'])
+        && request.resource.data.compradorUid == request.auth.uid
+        && request.resource.data.comprador == usuario().nome
+        && request.resource.data.pesagemId == id
+        && request.resource.data.status == 'enviado_escritorio'
+        && request.resource.data.unidadePreco in ['Por Kg', 'Por Arroba', 'Por Cabeça']
+        && request.resource.data.precoUnitario is string && float(request.resource.data.precoUnitario) > 0
+        && request.resource.data.timestamp == request.time
+        && request.resource.data.validadoEm == request.time
+        && get(/databases/$(database)/documents/pesagens/$(id)).data.status == 'aguardando_comprador'
+        && get(/databases/$(database)/documents/pesagens/$(id)).data.compradorUid == request.auth.uid
+        && request.resource.data.pesadorUid == get(/databases/$(database)/documents/pesagens/$(id)).data.pesadorUid
+        && request.resource.data.pesador == get(/databases/$(database)/documents/pesagens/$(id)).data.pesador
+        && getAfter(/databases/$(database)/documents/pesagens/$(id)).data.status == 'enviado_escritorio'
+        && getAfter(/databases/$(database)/documents/pesagens/$(id)).data.validadoEm == request.time;
+      allow update, delete: if false;
+    }
+    match /pecuaristas/{id} {
+      allow read: if operacional();
+      allow create, update, delete: if escritorio();
+    }
+    match /destinos/{id} {
+      allow read: if operacional();
+      allow create, update, delete: if escritorio();
+    }
+  }
+}

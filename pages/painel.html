@@ -19,7 +19,7 @@
                 <img class="sidebar-logo" src="../assets/img/logo-gvq-negativo.png" alt="GVQ — Grupo Vilela de Queiroz" onerror="this.style.display='none'">
             </div>
             <nav class="nav" aria-label="Menu principal">
-                <button type="button" class="nav-item ativa" id="nav-principal" aria-current="page" onclick="voltarTelaPrincipal()"><svg class="icon"><use href="../assets/img/icones.svg#romaneio"></use></svg><span>Novo romaneio</span></button>
+                <button type="button" class="nav-item ativa" id="nav-principal" aria-current="page" onclick="mostrarPendentes()"><svg class="icon"><use href="../assets/img/icones.svg#romaneio"></use></svg><span>Compras pendentes</span></button>
                 <button type="button" class="nav-item" id="nav-pesagem" onclick="mostrarTelaPesagem()"><svg class="icon"><use href="../assets/img/icones.svg#balanca"></use></svg><span>Pesagem</span></button>
                 <button type="button" class="nav-item" id="nav-historico" onclick="mostrarTelaHistorico()"><svg class="icon"><use href="../assets/img/icones.svg#historico"></use></svg><span>Histórico</span></button>
             </nav>
@@ -37,11 +37,23 @@
         <main class="conteudo">
             <div class="conteudo-inner">
 
+                <section id="tela-pendentes" class="tela">
+                    <header class="pagina-cabecalho"><div><h1 class="pagina-titulo">Compras pendentes</h1></div></header>
+                    <section class="card card-tabela card-lista">
+                        <div class="tabela-wrap tabela-lista">
+                            <table class="tabela-historico">
+                                <thead><tr><th>Data</th><th>Pecuarista</th><th>Pesador</th><th>Destino</th><th class="col-num">Cabeças / peso</th><th>Ação</th></tr></thead>
+                                <tbody id="tbody-pendentes"><tr><td colspan="6" class="celula-vazia">Carregando pesagens...</td></tr></tbody>
+                            </table>
+                        </div>
+                    </section>
+                </section>
+
                 <!-- ============ Tela 1: novo romaneio ============ -->
-                <div id="tela-principal" class="tela">
+                <div id="tela-principal" class="tela" style="display: none;">
                     <header class="pagina-cabecalho">
                         <div>
-                            <h1 class="pagina-titulo">Novo romaneio</h1>
+                            <h1 class="pagina-titulo">Conferir compra</h1>
                         </div>
                     </header>
 
@@ -150,7 +162,7 @@
                             <!-- Grade de 3 colunas: a Raça ocupa 2 linhas, assim o campo "Qual?" aparece sem empurrar os outros -->
                             <div class="form-grid form-grid-negocio">
                                 <div class="form-group">
-                                    <label for="rom_data_compra">Data da compra</label>
+                                    <label for="rom_data_compra">Data da pesagem</label>
                                     <input type="date" id="rom_data_compra" required>
                                 </div>
                                 <div class="form-group">
@@ -267,7 +279,7 @@
                         </section>
 
                         <div class="barra-acao">
-                            <button type="submit" id="btn-registrar" class="btn btn-primario btn-lg btn-bloco">Registrar embarque</button>
+                            <button type="submit" id="btn-registrar" class="btn btn-primario btn-lg btn-bloco">Validar e enviar ao escritório</button>
                         </div>
                     </form>
                 </div>
@@ -348,3 +360,4 @@
     <script type="module" src="../js/painel.js"></script>
 </body>
 </html>
+
