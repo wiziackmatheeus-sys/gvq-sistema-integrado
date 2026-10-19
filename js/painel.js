@@ -1,3 +1,4 @@
+import { compararNomes, normalizarTexto, buscarCompras } from './buscas.js';
 import { montarCamposDocumentos, atualizarSituacaoDocumentos, nomeDocumento } from './documentos.js';
 import { gerarCodigoCompra } from './codigo-compra.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -48,7 +49,7 @@ onAuthStateChanged(auth, async (user) => {
             let res = await fetch('https://servicodados.ibge.gov.br/api/v1/localidades/estados?orderBy=nome');
             let estados = await res.json();
             let ufSelect = document.getElementById('rom_uf');
-            estados.forEach(e => ufSelect.innerHTML += `<option value="${e.sigla}">${e.nome}</option>`);
+            estados.sort((a,b) => compararNomes(a.sigla,b.sigla)).forEach(e => ufSelect.innerHTML += `<option value="${e.sigla}">${e.nome}</option>`);
         } catch(e) { console.log('Erro IBGE'); }
 
         if (!sessaoValida()) return;
@@ -71,10 +72,10 @@ function configurarAutocomplete(inputId, listDivId, getOpcoesArray, onSelectCall
     const listDiv = document.getElementById(listDivId);
 
     function renderizarLista(filtro = '') {
-        let opcoes = getOpcoesArray();
+        let opcoes = [...new Set(getOpcoesArray())].sort(compararNomes);
         listDiv.innerHTML = '';
         
-        let filtrados = opcoes.filter(o => o.toLowerCase().includes(filtro.toLowerCase()));
+        let filtrados = opcoes.filter(o => normalizarTexto(o).includes(normalizarTexto(filtro)));
         
         if(filtrados.length === 0) {
             listDiv.style.display = 'none';
@@ -102,7 +103,7 @@ function configurarAutocomplete(inputId, listDivId, getOpcoesArray, onSelectCall
     input.addEventListener('blur', () => {
         listDiv.style.display = 'none';
         setTimeout(() => {
-            let opcoes = getOpcoesArray();
+            let opcoes = [...new Set(getOpcoesArray())].sort(compararNomes);
             if(input.value && !opcoes.includes(input.value)) {
                 alert("Atenção: Selecione uma opção válida da lista.");
                 input.value = '';
@@ -458,30 +459,37 @@ function puxarPendentes() {
         pesagensPendentes = snapshot.docs.map(d => ({ ...d.data(), id: d.id }))
             .filter(p => p.status === 'aguardando_comprador')
             .sort((a, b) => (b.dataCompra || '').localeCompare(a.dataCompra || ''));
-        const tbody = document.getElementById('tbody-pendentes');
-        tbody.replaceChildren();
-        if (!pesagensPendentes.length) {
-            tbody.innerHTML = '<tr><td colspan="6" class="celula-vazia">Nenhuma pesagem aguardando conferência.</td></tr>';
-        }
-        pesagensPendentes.forEach(p => {
-            const tr = document.createElement('tr');
-            [formatarData(p.dataCompra), p.pecuarista, p.pesador, p.fazendaDestino,
-                `${p.cabecas} cbç / ${p.pesoTotal} kg`].forEach(texto => {
-                const td = document.createElement('td'); td.textContent = texto || '—'; tr.appendChild(td);
-            });
-            const td = document.createElement('td');
-            const btn = document.createElement('button');
-            btn.type = 'button'; btn.className = 'btn btn-secundario btn-sm'; btn.textContent = p.validadoEm ? 'Revalidar' : 'Conferir';
-            btn.onclick = () => abrirConferencia(p.id);
-            td.appendChild(btn);
-            if (p.complementadoEm) {
-                const tag = document.createElement('span'); tag.className = 'tag tag-alerta'; tag.textContent = 'Novos documentos';
-                td.appendChild(document.createTextNode(' ')); td.appendChild(tag);
-            }
-            tr.appendChild(td); tbody.appendChild(tr);
-        });
+        window.filtrarPendentes();
     }, erroSincronizacao);
 }
+window.filtrarPendentes = function() {
+    const lista = buscarCompras(pesagensPendentes, { texto:valor('pendente-busca'), mes:valor('pendente-mes'), tipo:valor('pendente-tipo') });
+    const tbody = document.getElementById('tbody-pendentes');
+    tbody.replaceChildren();
+    if (!lista.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="celula-vazia">Nenhuma pesagem aguardando conferência.</td></tr>';
+    }
+    lista.forEach(p => {
+        const tr = document.createElement('tr');
+        [formatarData(p.dataCompra), p.pecuarista, p.pesador, p.fazendaDestino,
+            `${p.cabecas} cbç / ${p.pesoTotal} kg`].forEach(texto => {
+            const td = document.createElement('td'); td.textContent = texto || '—'; tr.appendChild(td);
+        });
+        const td = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'btn btn-secundario btn-sm'; btn.textContent = p.validadoEm ? 'Revalidar' : 'Conferir';
+        btn.onclick = () => abrirConferencia(p.id);
+        td.appendChild(btn);
+        if (p.complementadoEm) {
+            const tag = document.createElement('span'); tag.className = 'tag tag-alerta'; tag.textContent = 'Novos documentos';
+            td.appendChild(document.createTextNode(' ')); td.appendChild(tag);
+        }
+        tr.appendChild(td); tbody.appendChild(tr);
+    });
+};
+window.limparFiltrosPendentes = function() {
+    ['pendente-busca','pendente-mes','pendente-tipo'].forEach(id => { document.getElementById(id).value = ''; }); window.filtrarPendentes();
+};
 
 async function abrirConferencia(id) {
     try {
@@ -556,19 +564,15 @@ function renderizarHistorico(lista) {
         }
     });
 }
-window.filtrarHistorico = function() {
-    const data = valor('filtro_data');
-    const mes = valor('filtro_mes');
-    let lista = historicoDesteComprador;
-    if(data) { document.getElementById('filtro_mes').value = ''; lista = lista.filter(r => r.dataCompra === data); }
-    else if(mes) lista = lista.filter(r => r.dataCompra?.startsWith(mes));
+window.filtrarHistorico = function(origem) {
+    if (origem === 'data') document.getElementById('filtro_mes').value = '';
+    if (origem === 'mes') document.getElementById('filtro_data').value = '';
+    const lista = buscarCompras(historicoDesteComprador, { texto:valor('filtro_busca'), data:valor('filtro_data'), mes:valor('filtro_mes'), status:valor('filtro_situacao') });
     renderizarHistorico(lista);
-}
+};
 window.limparFiltrosHistorico = function() {
-    document.getElementById('filtro_data').value = '';
-    document.getElementById('filtro_mes').value = '';
-    renderizarHistorico(historicoDesteComprador);
-}
+    ['filtro_data','filtro_mes','filtro_busca','filtro_situacao'].forEach(id => { document.getElementById(id).value = ''; }); window.filtrarHistorico();
+};
 
 function criarLinkAnexo(anexo) {
     try {

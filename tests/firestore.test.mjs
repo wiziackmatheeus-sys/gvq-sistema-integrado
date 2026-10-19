@@ -200,3 +200,15 @@ test('categorias dos documentos são aceitas na pesagem e no complemento sem tor
     if (dados.anexosLinks[0].categoria !== 'gta') throw new Error('Categoria não preservada');
     await assertSucceeds(setDoc(doc(db('weigher1'), 'pesagens', 'sem-anexos'), pesagem()));
 });
+
+test('troca obrigatória bloqueia dados e não pode ser removida pelo cliente; sessões antigas continuam bloqueadas depois', async () => {
+    await env.withSecurityRulesDisabled(async c => updateDoc(doc(c.firestore(),'usuarios','buyer1'),{trocaSenhaObrigatoria:true}));
+    await assertSucceeds(getDoc(doc(db('buyer1'),'usuarios','buyer1')));
+    await assertFails(getDoc(doc(db('buyer1'),'pesagens','p1')));
+    await assertFails(updateDoc(doc(db('buyer1'),'usuarios','buyer1'),{trocaSenhaObrigatoria:false}));
+    await env.withSecurityRulesDisabled(async c => updateDoc(doc(c.firestore(),'usuarios','buyer1'),{trocaSenhaObrigatoria:false,sessaoRevogadaEm:1000}));
+    await assertFails(getDoc(doc(env.authenticatedContext('buyer1',{auth_time:1000}).firestore(),'pesagens','p1')));
+    await assertSucceeds(getDoc(doc(env.authenticatedContext('buyer1',{auth_time:1001}).firestore(),'pesagens','p1')));
+    await assertFails(setDoc(doc(db('office1'),'usuarios','outra-conta'),user('Outra','pesador',true)));
+    await assertFails(setDoc(doc(db('office1'),'auditoriaContas','forjado'),{tipo:'criacao'}));
+});

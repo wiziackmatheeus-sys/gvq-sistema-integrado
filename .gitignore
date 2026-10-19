@@ -2,3 +2,4 @@ node_modules
 *-debug.log
 .firebase/
 test-results/
+functions/.env*

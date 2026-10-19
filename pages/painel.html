@@ -39,6 +39,11 @@
 
                 <section id="tela-pendentes" class="tela">
                     <header class="pagina-cabecalho"><div><h1 class="pagina-titulo">Compras pendentes</h1></div></header>
+                    <section class="card"><div class="form-grid form-grid-negocio">
+                        <div class="form-group"><label for="pendente-busca">Buscar pecuarista, pesador ou fazenda</label><input id="pendente-busca" type="search" oninput="filtrarPendentes()"></div>
+                        <div class="form-group"><label for="pendente-mes">Mês da pesagem</label><input id="pendente-mes" type="month" onchange="filtrarPendentes()"></div>
+                        <div class="form-group"><label for="pendente-tipo">Conferência</label><select id="pendente-tipo" onchange="filtrarPendentes()"><option value="">Todas</option><option value="primeira">Primeira validação</option><option value="revalidacao">Revalidação</option></select></div>
+                    </div><button type="button" class="btn btn-fantasma btn-sm" onclick="limparFiltrosPendentes()">Limpar filtros</button></section>
                     <section class="card card-tabela card-lista">
                         <div class="tabela-wrap tabela-lista">
                             <table class="tabela-historico">
@@ -182,10 +187,10 @@
                                     <select id="rom_raca" onchange="verificarRacaOutra()" required>
                                         <option value="">Selecione...</option>
                                         <option value="Brangus">Brangus</option>
-                                        <option value="Nelore">Nelore</option>
                                         <option value="Cruzado">Cruzado</option>
-                                        <option value="F1 Angus">F1 Angus</option>
                                         <option value="Europeu">Europeu</option>
+                                        <option value="F1 Angus">F1 Angus</option>
+                                        <option value="Nelore">Nelore</option>
                                         <option value="outro">Outra</option>
                                     </select>
                                     <input type="text" id="rom_raca_outra" class="campo-extra" placeholder="Qual?" aria-label="Outra raça" style="display: none;">
@@ -332,15 +337,17 @@
 
                     <section class="card card-tabela card-lista">
                         <div class="card-cabecalho historico-barra">
-                            <div class="filtros">
+                            <div class="form-grid" style="width:100%;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));">
                                 <div class="form-group">
                                     <label for="filtro_data">Dia</label>
-                                    <input type="date" id="filtro_data" onchange="filtrarHistorico()">
+                                    <input type="date" id="filtro_data" onchange="filtrarHistorico('data')">
                                 </div>
                                 <div class="form-group">
                                     <label for="filtro_mes">Mês</label>
-                                    <input type="month" id="filtro_mes" onchange="filtrarHistorico()">
+                                    <input type="month" id="filtro_mes" onchange="filtrarHistorico('mes')">
                                 </div>
+                                <div class="form-group"><label for="filtro_busca">Buscar pecuarista, fazenda ou local</label><input id="filtro_busca" type="search" oninput="filtrarHistorico()"></div>
+                                <div class="form-group"><label for="filtro_situacao">Situação</label><select id="filtro_situacao" onchange="filtrarHistorico()"><option value="">Todas</option><option value="enviado_escritorio">Enviado ao escritório</option><option value="aguardando_revalidacao">Aguardando revalidação</option></select></div>
                                 <button type="button" class="btn btn-secundario" onclick="limparFiltrosHistorico()"><svg class="icon icon-sm"><use href="../assets/img/icones.svg#fechar"></use></svg><span>Limpar</span></button>
                             </div>
                         </div>

@@ -1,3 +1,4 @@
+import { compararNomes, buscarCompras, sugerirLogin } from '../js/buscas.js';
 import { filtrarCompras } from '../js/filtros-compras.js';
 import { categoriaDocumento, nomeDocumento, tiposDocumento } from '../js/documentos.js';
 import { gerarCodigoCompra, codigoDaCompra } from '../js/codigo-compra.js';
@@ -84,10 +85,21 @@ test('filtros de compras combinam código, fazenda, originador, etapa e mês com
     assert.deepEqual(filtrarCompras(compras, { mes: '2026-12' }), []);
     assert.equal(filtrarCompras(compras, { originador: 'Antigo', etapa: 'recebida', mes: '2026-11' })[0].id, 'b');
     assert.equal(filtrarCompras(compras).length, 2);
+    assert.equal(filtrarCompras(compras,{texto:'pecuarista barretos'}).length,2);
 });
 test('documentos possuem sete categorias opcionais e antigos ficam em Outros', () => {
     assert.equal(tiposDocumento.length, 7);
     assert.equal(categoriaDocumento({}), 'outros');
     assert.equal(categoriaDocumento({ categoria: 'inexistente' }), 'outros');
     assert.equal(nomeDocumento({ categoria: 'gta' }), 'GTA');
+});
+
+test('buscas ignoram acentos, combinam termos e filtros; nomes e raças seguem ordem pt-BR', () => {
+    const compras = [{ ...base, id:'p1', pesador:'João', status:'aguardando_comprador', validadoEm:123 }, { ...base, id:'p2', pecuarista:'Outra pessoa',dataCompra:'2026-11-01' }];
+    assert.equal(buscarCompras(compras,{texto:'joao GVQ',mes:'2026-10',tipo:'revalidacao'})[0].id,'p1');
+    assert.deepEqual(buscarCompras(compras,{texto:'inexistente'}),[]);
+    assert.equal(buscarCompras(compras,{status:'enviado_escritorio'})[0].id,'p2');
+    assert.equal(buscarCompras(compras,{data:'2026-11-01',tipo:'primeira'})[0].id,'p2');
+    assert.deepEqual(['Nelore','Brangus','F1 Angus','Europeu','Cruzado'].sort(compararNomes),['Brangus','Cruzado','Europeu','F1 Angus','Nelore']);
+    assert.equal(sugerirLogin(' João da Silva '),'joao.silva');
 });

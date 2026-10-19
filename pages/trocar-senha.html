@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nova senha — GVQ</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Montserrat:wght@600;700;800&amp;display=swap"><link rel="stylesheet" href="../css/base.css"><link rel="stylesheet" href="../css/login.css"></head>
+<body><main class="auth"><section class="auth-marca" aria-hidden="true"><img class="auth-logo" src="../assets/img/logo-gvq-negativo.png" alt=""></section><section class="auth-area"><div class="auth-card">
+<h1 class="pagina-titulo">Defina sua nova senha</h1><p class="texto-suave">Para acessar o sistema, substitua a senha temporária recebida do escritório.</p>
+<form id="form-trocar-senha" class="auth-form"><div class="form-group"><label for="senha-atual">Senha temporária atual</label><input id="senha-atual" type="password" required autocomplete="current-password" maxlength="128"></div>
+<div class="form-group"><label for="nova-senha">Nova senha (mínimo 8 caracteres)</label><input id="nova-senha" type="password" required minlength="8" maxlength="128" autocomplete="new-password"></div>
+<div class="form-group"><label for="confirmar-senha">Confirme a nova senha</label><input id="confirmar-senha" type="password" required minlength="8" maxlength="128" autocomplete="new-password"></div>
+<p id="erro-senha" role="alert"></p><button id="btn-trocar-senha" class="btn btn-primario" type="submit">Salvar nova senha</button><button id="sair-troca" class="btn btn-fantasma" type="button">Sair</button></form>
+</div></section></main><script type="module" src="../js/trocar-senha.js"></script></body></html>

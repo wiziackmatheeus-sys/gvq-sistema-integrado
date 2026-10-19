@@ -7,7 +7,9 @@ const firebaseMock = `
 const h=()=>window.__mock;
 const listeners=h().listeners||(h().listeners=[]);
 export const auth={get currentUser(){return h().uid?{uid:h().uid}:null},signOut:async()=>{h().signedOut=true;}};
-export const db={}, storage={};
+export const app={}, db={}, storage={};
+export function getFunctions(){return {}}
+export function httpsCallable(f,nome){return async dados=>{h().chamadas??=[];h().chamadas.push({nome,dados});localStorage.setItem('teste_funcao',nome);if(h().failFunction)throw Object.assign(new Error('Serviço indisponível'),{code:'functions/unavailable'});return {data:{uid:'criado',login:dados.login||'paulo.pesador',senhaTemporaria:'Temporaria-teste-123',sucesso:true}}}}
 export function onAuthStateChanged(a,callback){queueMicrotask(()=>callback({uid:h().uid}));return ()=>{}}
 export async function signOut(){
  if(h().failSignOut){const antigos=[...listeners];setTimeout(()=>antigos.forEach(l=>l.error?.(new Error('Missing or insufficient permissions.'))),10);throw new Error('Falha simulada de saída')}
@@ -42,7 +44,7 @@ export async function getDownloadURL(ref){return 'https://files.example.test/'+r
 export async function deleteObject(ref){h().deleted.push(ref.path)}
 `;
 const pending = {estado:'SP',cidade:'Barretos',fazendaDestino:'Fazenda GVQ',cidadeDestino:'Ibitinga',ufDestino:'SP',pecuarista:'João Pecuarista',pecuaristaDocumento:'123',pecuaristaBanco:'Banco',pecuaristaAgencia:'1',pecuaristaConta:'2',dataCompra:'2026-10-19',dataPagamento:'2026-10-23',cabecas:'2',pesoTotal:'650.50',pesoMedio:'325.25',tipoPesagem:'individual',sexo:'Macho',raca:'F1 Angus',pesosIndividuais:[300,350.5],observacoes:'Conferir lote',anexos:[],anexosLinks:[],anexosCaminhos:[],compradorUid:'buyer1',comprador:'Ana Originadora',pesadorUid:'weigher1',pesador:'Paulo Pesador',revisao:1,status:'aguardando_comprador',timestamp:'BASE_TIME'};
-function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],data:data||{usuarios:{buyer1:{nome:'Ana Originadora',perfil:'originador',aprovado:true},buyer2:{nome:'Bruno Originador',perfil:'comprador',aprovado:true},weigher1:{nome:'Paulo Pesador',perfil:'pesador',aprovado:true,compradorUid:'buyer1',comprador:'Ana Originadora'},waiting:{nome:'Pedro Pesador',perfil:'pesador',aprovado:false},office1:{nome:'Olivia Escritório',perfil:'escritorio',aprovado:true},pendingOffice:{nome:'Escritório pendente',perfil:'escritorio',aprovado:false}},pesagens:{p1:pending,p2:{...pending,compradorUid:'buyer2',pesadorUid:'weigher2'}},romaneios:{old:{comprador:'Ana Originadora',pecuarista:'Legado',cabecas:'1',dataCompra:'2026-09-01'}},pecuaristas:{pec1:{nome:'João Pecuarista',documento:'123',banco:'Banco',agencia:'1',conta:'2'}},destinos:{dest1:{nome:'Fazenda GVQ',cidade:'Ibitinga',estado:'SP'}}}}}
+function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],data:data||{usuarios:{buyer1:{nome:'Ana Originadora',perfil:'originador',aprovado:true},buyer2:{nome:'Bruno Originador',perfil:'comprador',aprovado:true},weigher1:{nome:'Paulo Pesador',perfil:'pesador',aprovado:true,compradorUid:'buyer1',comprador:'Ana Originadora'},waiting:{nome:'Pedro Pesador',perfil:'pesador',aprovado:false},office1:{nome:'Olivia Escritório',perfil:'escritorio',aprovado:true},pendingOffice:{nome:'Escritório pendente',perfil:'escritorio',aprovado:false}},pesagens:{p1:pending,p2:{...pending,compradorUid:'buyer2',pesadorUid:'weigher2'}},romaneios:{old:{comprador:'Ana Originadora',pecuarista:'Legado',cabecas:'1',dataCompra:'2026-09-01'}},pecuaristas:{pec1:{nome:'João Pecuarista',cidade:'Barretos',estado:'SP',documento:'123',banco:'Banco',agencia:'1',conta:'2'}},destinos:{dest1:{nome:'Fazenda GVQ',cidade:'Ibitinga',estado:'SP'}}}}}
 (async()=>{
  const browser=await chromium.launch({headless:true,...(process.env.GVQ_CHROMIUM_PATH?{executablePath:process.env.GVQ_CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']}: {})});
  async function pageFor(uid,file,width=1280,data){
@@ -54,7 +56,7 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
    if(u.hostname==='www.gstatic.com')return route.fulfill({contentType:'application/javascript',body:firebaseMock});
    if(u.hostname==='servicodados.ibge.gov.br')return route.fulfill({contentType:'application/json',body:JSON.stringify(u.pathname.includes('municipios')?[{nome:'Barretos'}]:[{sigla:'SP',nome:'São Paulo'}])});
    if(u.hostname!=='gvq.local')return route.abort();
-   if(u.pathname==='/js/firebase.js')return route.fulfill({contentType:'application/javascript',body:"export {auth,db,storage} from 'https://www.gstatic.com/mock.js';"});
+   if(u.pathname==='/js/firebase.js')return route.fulfill({contentType:'application/javascript',body:"export {app,auth,db,storage} from 'https://www.gstatic.com/mock.js';"});
    if(original&&u.pathname==='/original.html')return route.fulfill({contentType:'text/html',body:original.replaceAll('../','/').replace(/<script[^>]+src="\/js\/painel.js"><\/script>/,'')});
    const f=path.join(root,u.pathname);if(!fs.existsSync(f))return route.fulfill({status:404,body:''});
    return route.fulfill({contentType:({'.html':'text/html','.js':'application/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png'})[path.extname(f)]||'text/plain',body:fs.readFileSync(f)});
@@ -83,10 +85,39 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  assert.equal(await office.evaluate(()=>window.__mock.data.usuarios.waiting.compradorUid),'buyer2');
  assert.equal(await office.evaluate(()=>window.__mock.data.usuarios.waiting.aprovadoPor),'office1');assert.deepEqual(oe,[]);
  console.log('PASS: escritório designa originador e aprova pesador.');
+ // Criação e redefinição usam o serviço administrativo sem trocar a sessão.
+ await office.locator('#conta-nome').fill('Carlos da Fazenda');await office.locator('#conta-nome').blur();
+ assert.equal(await office.locator('#conta-login').inputValue(),'carlos.fazenda');
+ await office.locator('#conta-perfil').selectOption('originador');assert.equal(await office.locator('#grupo-conta-originador').isVisible(),false);await office.locator('#conta-perfil').selectOption('pesador');
+ await office.locator('#conta-originador').selectOption('buyer1');await office.locator('#btn-criar-conta').click();
+ assert.equal(await office.locator('#senha-temporaria').inputValue(),'Temporaria-teste-123');
+ assert.equal(await office.evaluate(()=>window.__mock.uid),'office1');
+ assert.deepEqual(await office.evaluate(()=>window.__mock.chamadas[0].dados),{nome:'Carlos da Fazenda',login:'carlos.fazenda',perfil:'pesador',compradorUid:'buyer1'});
+ await office.locator('#ocultar-credenciais').click();assert.equal(await office.locator('#senha-temporaria').inputValue(),'');
+ await office.locator('#tbody-usuarios tr').filter({hasText:'Paulo Pesador'}).getByRole('button',{name:'Redefinir senha',exact:true}).click();
+ assert.equal(await office.evaluate(()=>window.__mock.chamadas.at(-1).nome),'redefinirSenha');assert.equal(await office.evaluate(()=>window.__mock.chamadas.at(-1).dados.uid),'weigher1');
+ await office.locator('#filtro-perfil-usuarios').selectOption('originador');assert.equal(await office.locator('#tbody-usuarios tr').count(),2);
+ await office.locator('#busca-usuarios').fill('bruno');assert.equal(await office.locator('#tbody-usuarios tr').count(),1);
+ await office.locator('#btn-tab-romaneios').click();assert.equal(await office.locator('#senha-temporaria').inputValue(),'');
+ const {page:accountsFail,alerts:accountAlerts}=await pageFor('office1','pages/escritorio.html');await accountsFail.locator('#btn-tab-usuarios').click();await accountsFail.evaluate(()=>window.__mock.failFunction=true);
+ await accountsFail.locator('#tbody-usuarios tr').filter({hasText:'Paulo Pesador'}).getByRole('button',{name:'Redefinir senha',exact:true}).click();
+ assert.ok(accountAlerts.some(a=>a.includes('publicação das funções')));assert.equal(await accountsFail.locator('#resultado-conta').isVisible(),false);await accountsFail.close();
+ console.log('PASS: criação/redefinição, filtros de usuários e senha oculta ao sair.');
+ const forced=seed('weigher1').data;forced.usuarios.weigher1.trocaSenhaObrigatoria=true;
+ const {page:forceRedirect}=await pageFor('weigher1','pages/pesador.html',1280,forced);await forceRedirect.waitForURL('**/trocar-senha.html');
+ assert.equal(await forceRedirect.evaluate(()=>window.__mock.reads.some(r=>r.name==='pesagens')),false);
+ await forceRedirect.screenshot({path:path.join(root,'test-results','trocar-senha-1280.png'),fullPage:true});
+ await forceRedirect.locator('#senha-atual').fill('Temporaria-123');await forceRedirect.locator('#nova-senha').fill('Definitiva-456');await forceRedirect.locator('#confirmar-senha').fill('Diferente-456');
+ await forceRedirect.locator('#btn-trocar-senha').click();assert.ok((await forceRedirect.locator('#erro-senha').innerText()).includes('iguais'));
+ await forceRedirect.locator('#confirmar-senha').fill('Definitiva-456');await forceRedirect.locator('#btn-trocar-senha').click();await forceRedirect.waitForURL('**/index.html');
+ assert.equal(await forceRedirect.evaluate(()=>localStorage.getItem('teste_funcao')),'trocarSenhaInicial');await forceRedirect.close();
+ const {page:forcedLogin}=await pageFor('weigher1','index.html',1280,forced);await forcedLogin.locator('#login_usuario').fill('paulo.pesador');await forcedLogin.locator('#login_senha').fill('Temporaria-123');await forcedLogin.locator('#btn-entrar').click();await forcedLogin.waitForURL('**/trocar-senha.html');await forcedLogin.close();
+ console.log('PASS: troca obrigatória no login e URL direta, confirmação e saída após trocar.');
+
  const {page:w,errors:we}=await pageFor('weigher1','pages/pesador.html');
  assert.equal(await w.locator('#rom_originador').inputValue(),'Ana Originadora');assert.equal(await w.locator('#rom_comprador').count(),0);
  assert.equal(await w.evaluate(()=>window.__mock.reads.some(r=>r.name==='usuarios'&&!r.id)),false);
- assert.equal(await w.locator('#rom_raca option[value="F1 Angus"],#rom_raca option[value="Europeu"]').count(),2);
+ assert.equal(await w.locator('#rom_raca option[value="F1 Angus"],#rom_raca option[value="Europeu"]').count(),2);assert.deepEqual(await w.locator('#rom_raca option').allTextContents(),['Selecione...','Brangus','Cruzado','Europeu','F1 Angus','Nelore','Outra']);
  await fillOperacional(w);
  assert.equal(await w.locator('#rom_peso_medio').inputValue(),'325.25');
  assert.equal(await w.locator('#rom_cabecas').getAttribute('readonly'),null);
@@ -145,6 +176,7 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  }
  assert.deepEqual(exportErrors,[]);
  // Filtros combinados, seleção restrita à lista e consulta ao histórico da compra correta.
+ await exportPage.locator('#filtro-texto').fill('joao');
  await exportPage.locator('#filtro-codigo').fill(codigoCompra);
  await exportPage.locator('#filtro-fazenda').selectOption('Fazenda GVQ');
  await exportPage.locator('#filtro-originador').selectOption('buyer1');
@@ -167,6 +199,14 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  await exportPage.close();
  console.log('PASS: filtros combinados, nenhum resultado, seleção visível e documentos opcionais no escritório.');
  console.log('PASS: código automático visível no escritório e idêntico nas exportações de compras e pesos.');
+ const {page:catalog}=await pageFor('office1','pages/escritorio.html');await catalog.locator('#btn-tab-pecuaristas').click();
+ await catalog.locator('#busca-pecuaristas').fill('joao barretos');assert.equal(await catalog.locator('#tbody-pecuaristas tr[data-busca]:visible').count(),1);
+ await catalog.locator('#busca-pecuaristas').fill('inexistente');assert.ok((await catalog.locator('#tbody-pecuaristas').innerText()).includes('Nenhum resultado'));
+ await catalog.locator('#busca-pecuaristas').fill('');await catalog.locator('#btn-tab-destinos').click();await catalog.locator('#busca-destinos').fill('ibitinga');assert.equal(await catalog.locator('#tbody-destinos tr[data-busca]:visible').count(),1);await catalog.close();
+ const {page:queue}=await pageFor('buyer1','pages/painel.html');await queue.locator('#pendente-busca').fill('inexistente');assert.equal(await queue.locator('#tbody-pendentes button').count(),0);await queue.locator('#pendente-busca').fill('joao');assert.equal(await queue.locator('#tbody-pendentes button').count(),1);await queue.locator('#pendente-tipo').selectOption('revalidacao');assert.equal(await queue.locator('#tbody-pendentes button').count(),0);await queue.getByRole('button',{name:'Limpar filtros',exact:true}).click();assert.equal(await queue.locator('#tbody-pendentes button').count(),1);await queue.close();
+ const {page:hist}=await pageFor('weigher1','pages/pesador.html');await hist.evaluate(()=>window.mostrarTelaHistorico());await hist.locator('#filtro_busca').fill('joao');assert.equal(await hist.locator('#tbody-historico .col-documentos').count(),1);await hist.locator('#filtro_situacao').selectOption('enviado_escritorio');assert.equal(await hist.locator('#tbody-historico .col-documentos').count(),0);await hist.evaluate(()=>window.limparFiltrosHistorico());assert.equal(await hist.locator('#tbody-historico .col-documentos').count(),1);await hist.close();
+ console.log('PASS: busca sem acentos em cadastros, pendências por tipo e histórico por situação.');
+
  // Documento posterior retira a compra do escritório e preserva negociação anterior para revalidação.
  data=await b.evaluate(()=>window.__mock.data);
  // O escritório assume e finaliza antes de o pesador complementar documentos.
@@ -306,7 +346,7 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
   }
   await after.screenshot({path:path.join(root,'test-results','originador-'+width+'.png'),fullPage:true});
   const {page:pesador}=await pageFor('weigher1','pages/pesador.html',width);await pesador.screenshot({path:path.join(root,'test-results','pesador-'+width+'.png'),fullPage:true});
-  const {page:officePreview}=await pageFor('office1','pages/escritorio.html',width);await officePreview.locator('#btn-tab-usuarios').click();await officePreview.waitForTimeout(350);await officePreview.screenshot({path:path.join(root,'test-results','escritorio-'+width+'.png'),fullPage:true});
+  const {page:officePreview}=await pageFor('office1','pages/escritorio.html',width);await officePreview.screenshot({path:path.join(root,'test-results','escritorio-filtros-'+width+'.png'),fullPage:true});await officePreview.locator('#btn-tab-usuarios').click();await officePreview.waitForTimeout(350);await officePreview.screenshot({path:path.join(root,'test-results','escritorio-'+width+'.png'),fullPage:true});
   console.log('PASS: estilos e telas em '+width+'px.');
  }
  await browser.close();
