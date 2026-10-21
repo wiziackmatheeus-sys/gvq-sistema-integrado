@@ -1,8 +1,9 @@
+import { criarRascunhoLocal } from './rascunho-local.js';
 import { compararNomes, normalizarTexto, buscarCompras } from './buscas.js';
 import { montarCamposDocumentos, atualizarSituacaoDocumentos, nomeDocumento } from './documentos.js';
 import { gerarCodigoCompra } from './codigo-compra.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, runTransaction, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, runTransaction, getDoc, getDocs, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
 import { enviarAnexos, limparUploads, unirAnexos } from './anexos.js';
 import { criarControleSessao } from './sessao.js';
@@ -18,6 +19,75 @@ let nomeCompradorLogado = "";
 let arquivosFilaGlobais = [];
 const ehPesador = document.body.dataset.perfil === 'pesador';
 let usuarioAtual = null;
+let rascunho = null;
+let envioEmAndamento = false;
+let rascunhoPronto = false;
+let bloqueioRascunho = false;
+const formulario = document.getElementById('form-romaneio');
+
+function informarRascunho(texto, erro = false) {
+    const el = document.getElementById('situacao-rascunho');
+    if (!el) return;
+    el.textContent = texto;
+    el.classList.toggle('rascunho-erro', erro);
+}
+function salvarRascunhoAutomatico() {
+    if (ehPesador && rascunhoPronto && !envioEmAndamento && auth.currentUser?.uid === usuarioAtual?.uid) {
+        rascunho?.salvar().catch(() => {});
+    }
+}
+function capturarRascunho() {
+    const campos = {};
+    formulario.querySelectorAll('input[id], select[id], textarea[id]').forEach(el => {
+        if (el.type !== 'file' && el.id !== 'rom_originador') campos[el.id] = el.value;
+    });
+    return { campos, pesosConfirmados: [...pesosAdicionadosGlobais],
+        grade: Array.from(document.querySelectorAll('#grid-inputs input'), el => el.value),
+        arquivos: arquivosFilaGlobais.map(a => ({ ...a })) };
+}
+async function restaurarRascunho(dados) {
+    if (!dados || !dados.campos || !Array.isArray(dados.grade) || !Array.isArray(dados.pesosConfirmados) || !Array.isArray(dados.arquivos)) throw new Error('Não foi possível ler o rascunho.');
+    formulario.querySelectorAll('input[id], select[id], textarea[id]').forEach(el => {
+        if (el.type === 'file' || el.id === 'rom_originador' || typeof dados.campos[el.id] !== 'string') return;
+        if (el.id === 'rom_uf' && dados.campos[el.id] && !Array.from(el.options).some(o => o.value === dados.campos[el.id])) el.add(new Option(dados.campos[el.id], dados.campos[el.id]));
+        el.value = dados.campos[el.id];
+    });
+    while (totalCamposPeso < dados.grade.length) window.adicionarMais50();
+    dados.grade.forEach((peso, i) => { document.getElementById(`peso_ind_${i + 1}`).value = peso; });
+    pesosAdicionadosGlobais = [...dados.pesosConfirmados];
+    arquivosFilaGlobais = dados.arquivos;
+    window.verificarRacaOutra(); window.calcularTotaisGrid(); window.calcularValorTotal(); renderizarFilaArquivos();
+    if (valor('rom_uf')) window.carregarCidades(true);
+}
+async function iniciarRascunho(sessaoValida) {
+    const uid = usuarioAtual.uid;
+    rascunhoPronto = false; rascunho?.encerrar();
+    formulario.inert = true;
+    document.getElementById('grid-inputs').inert = true;
+    try {
+        const controle = await criarRascunhoLocal({ uid, capturar: capturarRascunho,
+            restaurar: dados => { if (sessaoValida() && auth.currentUser?.uid === uid) return restaurarRascunho(dados); },
+            informar: (texto, erro) => { if (sessaoValida()) informarRascunho(texto, erro); } });
+        if (!sessaoValida()) { controle.encerrar(); return; }
+        rascunho = controle;
+        rascunhoPronto = true;
+    } catch (error) { informarRascunho('O salvamento de rascunho está indisponível. ' + error.message, true); }
+    finally { formulario.inert = false; document.getElementById('grid-inputs').inert = false; }
+}
+if (ehPesador) {
+    document.addEventListener('input', e => { if (formulario.contains(e.target) || document.getElementById('grid-inputs').contains(e.target)) salvarRascunhoAutomatico(); });
+    formulario.addEventListener('change', salvarRascunhoAutomatico);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) salvarRascunhoAutomatico(); });
+    window.addEventListener('pagehide', salvarRascunhoAutomatico);
+    document.getElementById('btn-salvar-rascunho').onclick = () => salvarRascunhoAutomatico();
+    document.getElementById('btn-descartar-rascunho').onclick = async () => {
+        if (!rascunhoPronto || envioEmAndamento || !confirm('Descartar o rascunho deste aparelho e limpar o preenchimento?')) return;
+        envioEmAndamento = true; formulario.inert = true; document.getElementById('grid-inputs').inert = true;
+        try { await rascunho.apagar(); limparFormulario(); }
+        catch { /* O formulário é preservado se a exclusão falhar. */ }
+        finally { envioEmAndamento = false; formulario.inert = false; document.getElementById('grid-inputs').inert = false; }
+    };
+}
 let anexosLinksExistentes = [];
 let complementoId = null;
 let documentosComplemento = [];
@@ -39,6 +109,8 @@ onAuthStateChanged(auth, async (user) => {
         document.getElementById('nome-usuario').innerText = 'Olá, ' + nomeCompradorLogado.split(' ')[0];
         
         gerarGrelhaPesosInit();
+        if (ehPesador) await iniciarRascunho(sessaoValida);
+        if (!sessaoValida()) return;
         
         // INICIALIZA OS AUTOCOMPLETES VERTICAIS
         configurarAutocomplete('rom_cidade', 'lista_cidades_ui', () => cidadesEstadoGlobais, () => {});
@@ -49,7 +121,10 @@ onAuthStateChanged(auth, async (user) => {
             let res = await fetch('https://servicodados.ibge.gov.br/api/v1/localidades/estados?orderBy=nome');
             let estados = await res.json();
             let ufSelect = document.getElementById('rom_uf');
-            estados.sort((a,b) => compararNomes(a.sigla,b.sigla)).forEach(e => ufSelect.innerHTML += `<option value="${e.sigla}">${e.nome}</option>`);
+            estados.sort((a,b) => compararNomes(a.sigla,b.sigla)).forEach(e => {
+                const existente = Array.from(ufSelect.options).find(o => o.value === e.sigla);
+                if (existente) existente.textContent = e.nome; else ufSelect.add(new Option(e.nome, e.sigla));
+            });
         } catch(e) { console.log('Erro IBGE'); }
 
         if (!sessaoValida()) return;
@@ -59,6 +134,7 @@ onAuthStateChanged(auth, async (user) => {
         if (ehPesador) document.getElementById('rom_originador').value = usuarioAtual.comprador;
         else { puxarPendentes(); window.mostrarPendentes(); }
     } else {
+        rascunhoPronto = false; rascunho?.encerrar();
         sessao.encerrar();
         window.location.href = '../index.html';
     }
@@ -91,6 +167,7 @@ function configurarAutocomplete(inputId, listDivId, getOpcoesArray, onSelectCall
                 input.value = opc;
                 listDiv.style.display = 'none';
                 if(onSelectCallback) onSelectCallback();
+                salvarRascunhoAutomatico();
             };
             listDiv.appendChild(div);
         });
@@ -108,15 +185,17 @@ function configurarAutocomplete(inputId, listDivId, getOpcoesArray, onSelectCall
                 alert("Atenção: Selecione uma opção válida da lista.");
                 input.value = '';
                 if(onSelectCallback) onSelectCallback();
+                salvarRascunhoAutomatico();
             }
         }, 150);
     });
 }
 
-window.carregarCidades = async function() {
+window.carregarCidades = async function(preservar = false) {
     let uf = document.getElementById('rom_uf').value;
     let inputCidade = document.getElementById('rom_cidade');
-    inputCidade.value = ''; inputCidade.placeholder = 'Carregando cidades...';
+    if (!preservar) inputCidade.value = '';
+    inputCidade.placeholder = 'Carregando cidades...';
     cidadesEstadoGlobais = [];
     if (!uf) { inputCidade.placeholder = 'Selecione o estado primeiro...'; return; }
     try {
@@ -133,6 +212,7 @@ function puxarDestinosDaNuvem() {
         destinosGlobais = [];
         snapshot.forEach((doc) => { destinosGlobais.push(doc.data()); });
         document.getElementById('rom_fazenda_destino').placeholder = "Digite o nome da fazenda...";
+        if (ehPesador && destinosGlobais.some(d => d.nome === valor('rom_fazenda_destino'))) window.preencherDestino();
     }, erroSincronizacao);
 }
 
@@ -154,6 +234,7 @@ function puxarPecuaristasDaNuvem() {
         pecuaristasGlobais = [];
         snapshot.forEach((doc) => { pecuaristasGlobais.push(doc.data()); });
         document.getElementById('rom_busca_pec').placeholder = "Digite o nome do pecuarista...";
+        if (ehPesador && pecuaristasGlobais.some(p => p.nome === valor('rom_busca_pec'))) window.preencherPecuarista();
     }, erroSincronizacao);
 }
 
@@ -176,11 +257,13 @@ window.adicionarAnexosFila = function(event) {
     for(let i = 0; i < files.length; i++) { arquivosFilaGlobais.push({ arquivo: files[i], categoria: event.target.dataset.categoria || 'outros' }); }
     event.target.value = ''; 
     renderizarFilaArquivos();
+    salvarRascunhoAutomatico();
 }
 
 window.removerAnexoFila = function(index) {
     arquivosFilaGlobais.splice(index, 1);
     renderizarFilaArquivos();
+    salvarRascunhoAutomatico();
 }
 
 function renderizarFilaArquivos() {
@@ -209,7 +292,14 @@ function renderizarFilaArquivos() {
     atualizarSituacaoDocumentos('campos-documentos', [...existentes, ...arquivosFilaGlobais]);
 }
 
-window.sair = sessao.sair;
+window.sair = async function() {
+    if (envioEmAndamento) return;
+    if (ehPesador && rascunhoPronto) {
+        try { await rascunho.salvar(); }
+        catch { if (!confirm('Não foi possível salvar o rascunho. Deseja sair mesmo assim?')) return; }
+    }
+    await sessao.sair();
+};
 
 window.verificarRacaOutra = function() {
     let select = document.getElementById('rom_raca');
@@ -334,6 +424,7 @@ window.salvarPesosGrid = function() {
     document.getElementById('rom_peso_total').value = cabecas > 0 ? peso.toFixed(2) : '';
     window.calcularValorTotal();
     window.voltarTelaPrincipal();
+    salvarRascunhoAutomatico();
 }
 
 window.ajustarTipoPesagem = function() {
@@ -343,6 +434,7 @@ window.ajustarTipoPesagem = function() {
         window.calcularTotaisGrid();
     }
     window.calcularValorTotal();
+    salvarRascunhoAutomatico();
 }
 
 function lerFormulario() {
@@ -380,7 +472,10 @@ function limparFormulario() {
 
 document.getElementById('form-romaneio').addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (!usuarioAtual) return;
+    if (!usuarioAtual || envioEmAndamento) return;
+    envioEmAndamento = true;
+    formulario.inert = true;
+    document.getElementById('grid-inputs').inert = true;
     const btn = document.getElementById('btn-registrar');
     btn.innerText = 'Salvando registro no banco...'; btn.disabled = true;
     let enviados = [];
@@ -398,7 +493,18 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
             const perfil = await getDoc(doc(db, 'usuarios', usuarioAtual.uid));
             const responsavel = perfil.data();
             if (!responsavel?.aprovado || !responsavel.compradorUid) throw new Error('Aguarde o escritório aprovar seu cadastro e designar o originador.');
-            const origem = doc(collection(db, 'pesagens'));
+            // O mesmo ID é reutilizado em uma repetição após falha de conexão.
+            const origem = rascunho ? doc(db, 'pesagens', rascunho.id) : doc(collection(db, 'pesagens'));
+            const anteriores = await getDocs(query(collection(db, 'pesagens'), where('pesadorUid', '==', usuarioAtual.uid), where('__name__', '==', origem.id)));
+            if (!anteriores.empty) {
+                if (!confirm('Esta pesagem já foi enviada. Consulte o histórico. Deseja descartar este rascunho e iniciar outro preenchimento?')) return;
+                gravado = true;
+                if (rascunho) await rascunho.apagar();
+                limparFormulario();
+                alert('Esta pesagem já foi enviada. Confira o histórico.');
+                return;
+            }
+            if (rascunhoPronto) { try { await rascunho.salvar(); } catch { /* O envio ao servidor pode continuar. */ } }
             enviados = await enviarAnexos(arquivosFilaGlobais, { uid: usuarioAtual.uid, pesagemId: origem.id });
             await setDoc(origem, {
                 ...dadosPesagem(dados), anexosLinks: enviados, anexosCaminhos: enviados.map(a => a.caminho),
@@ -444,13 +550,20 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
             gravado = true;
             alert('Compra validada e enviada ao escritório!');
         }
+        if (ehPesador && rascunho) {
+            try { await rascunho.apagar(); }
+            catch { informarRascunho('Compra enviada. Não foi possível limpar o rascunho; reabra a página antes de iniciar outra compra.', true); rascunhoPronto = false; bloqueioRascunho = true; }
+        }
         limparFormulario();
         if (!ehPesador) window.mostrarPendentes();
         window.scrollTo(0, 0);
     } catch(error) {
         if (!gravado) await limparUploads(enviados);
         alert('Erro ao salvar: ' + error.message);
-    } finally { btn.innerText = textoEnviar; btn.disabled = false; }
+    } finally {
+        btn.innerText = textoEnviar; btn.disabled = bloqueioRascunho; envioEmAndamento = false;
+        formulario.inert = bloqueioRascunho; document.getElementById('grid-inputs').inert = bloqueioRascunho;
+    }
 });
 
 function puxarPendentes() {
@@ -643,3 +756,4 @@ if (ehPesador) document.getElementById('form-complementos').addEventListener('su
 
 montarCamposDocumentos('campos-documentos', 'input_arquivos', window.adicionarAnexosFila);
 if (ehPesador) montarCamposDocumentos('campos-complementos', 'input_complementos', window.listarComplementos);
+

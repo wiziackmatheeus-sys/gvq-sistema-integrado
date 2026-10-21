@@ -111,3 +111,10 @@ npm run test:browser
 As regras usam emuladores no projeto `demo-gvq-tests`. O navegador usa Firebase, Storage e IBGE simulados. Nenhum teste grava em produção. Para comparar estilos com uma revisão anterior, definir `GVQ_BASE_REF=SHA_ANTERIOR`; para utilizar Chromium já instalado, definir `GVQ_CHROMIUM_PATH`.
 
 A aplicação continua usando Firebase até uma futura migração para MySQL, que precisará transportar também autenticação, permissões e armazenamento dos arquivos.
+
+
+## Rascunho automático do pesador
+
+O preenchimento em andamento é salvo automaticamente no IndexedDB do navegador, por UID, incluindo campos incompletos, pesos ainda não confirmados e arquivos selecionados. Há botões para salvar e descartar. O rascunho é recuperado ao reabrir a página com a mesma conta, no mesmo navegador e aparelho, e não é enviado ao originador. Após o envio confirmado, ele é removido; falhas de envio preservam o preenchimento. O ID da pesagem é mantido para evitar duplicação em tentativas repetidas.
+
+A tela informa quando o salvamento terminou ou falhou. Não é sincronização entre aparelhos nem garantia de funcionamento do site inteiro sem internet. Limpar os dados do navegador, usar uma sessão privada ou a remoção de armazenamento pelo aparelho pode eliminar o rascunho. Em aparelhos compartilhados, outras pessoas com acesso ao mesmo perfil do navegador podem inspecionar os dados locais; a separação por UID evita recuperação pela interface de outra conta, mas não criptografa o armazenamento. Conflitos entre abas são sinalizados, preservando a versão já salva.
