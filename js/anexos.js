@@ -1,9 +1,9 @@
 import { acompanharUpload, comPrazo } from './controle-envio.js';
 import { categoriaDocumento } from './documentos.js';
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject, setMaxUploadRetryTime, setMaxOperationRetryTime } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 import { storage } from './firebase.js';
-setMaxUploadRetryTime(storage, 45000);
-setMaxOperationRetryTime(storage, 15000);
+storage.maxUploadRetryTime = 45000;
+storage.maxOperationRetryTime = 15000;
 
 export async function enviarAnexos(arquivos, { uid, pesagemId, financeiro = false, aoProgresso }) {
     const enviados = [];
@@ -42,4 +42,5 @@ export async function limparUploads(anexos) {
 export function unirAnexos(...listas) {
     return [...new Map(listas.flat().map(a => [a.caminho || a.urlDownload, a])).values()];
 }
+
 

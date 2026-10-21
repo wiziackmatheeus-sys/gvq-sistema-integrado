@@ -42,8 +42,6 @@ export async function signInWithEmailAndPassword(){return {user:{uid:h().uid}}}
 export async function createUserWithEmailAndPassword(){return {user:{uid:h().uid}}}
 export function ref(storage,path){return {path}}
 export async function uploadBytes(ref,file){if(h().failUpload)throw new Error('Storage indisponível');h().uploads.push({path:ref.path,name:file.name,size:file.size})}
-export function setMaxUploadRetryTime(){}
-export function setMaxOperationRetryTime(){}
 export function uploadBytesResumable(ref,file){
  const tarefa={snapshot:{bytesTransferred:0,totalBytes:file.size},cancel(){h().cancelledUploads=(h().cancelledUploads||0)+1;return true},on(event,progress,error,complete){
   let active=true;queueMicrotask(async()=>{if(!active)return;progress(tarefa.snapshot);if(h().hangUpload)return;
@@ -438,6 +436,7 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  }
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});
+
 
 
 

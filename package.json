@@ -7,6 +7,7 @@
     "test": "node --test tests/fluxo.test.mjs tests/rascunho.test.mjs tests/envio.test.mjs",
     "test:rules": "firebase emulators:exec --project demo-gvq-tests --only firestore 'node --test tests/firestore.test.mjs'",
     "test:browser": "node tests/browser.cjs",
+    "test:sdk": "node tests/sdk.cjs",
     "test:storage": "firebase emulators:exec --project demo-gvq-tests --only firestore,storage 'node --test tests/storage.test.mjs'",
     "test:contas": "firebase emulators:exec --project demo-gvq-tests --only auth,firestore 'node --test tests/contas.test.mjs'"
   },
@@ -18,4 +19,5 @@
     "playwright": "1.62.1"
   }
 }
+
 
