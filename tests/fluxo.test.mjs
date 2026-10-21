@@ -1,3 +1,5 @@
+import { registrarAnexosTexto } from '../js/anexos-texto.js';
+import { ANEXOS_SOMENTE_TEXTO } from '../js/configuracao.js';
 import { compararNomes, buscarCompras, sugerirLogin } from '../js/buscas.js';
 import { filtrarCompras } from '../js/filtros-compras.js';
 import { categoriaDocumento, nomeDocumento, tiposDocumento } from '../js/documentos.js';
@@ -132,4 +134,17 @@ test('disputa por número só repete a transação quando o contador realmente a
     tentativas = 0;
     await assert.rejects(executarNumeracao(async leitura => { tentativas++; leitura.valor = 0; throw erro; }, async () => 0), /Negado/);
     assert.equal(tentativas, 1);
+});
+
+
+test('demonstração ativa registra múltiplos nomes e categorias sem conteúdo nem URL de arquivo', () => {
+    assert.equal(ANEXOS_SOMENTE_TEXTO, true);
+    const arquivos = [{arquivo: {name: 'nota.pdf', size: 99 * 1024 * 1024}, categoria: 'nota_fiscal'},
+        {arquivo: {name: 'nota.pdf', size: 3}, categoria: 'ordem_embarque_checklist'}];
+    let sequencia = 0;
+    const registros = registrarAnexosTexto(arquivos, {uid: 'pesador', pesagemId: 'p1', novoId: () => String(++sequencia)});
+    assert.deepEqual(registros.map(a => [a.nomeArquivo,a.categoria,a.somenteTexto]), [['nota.pdf','nota_fiscal',true],['nota.pdf','ordem_embarque_checklist',true]]);
+    assert.notEqual(registros[0].caminho,registros[1].caminho);
+    assert.ok(registros.every(a => a.caminho.startsWith('demonstracao/') && !('urlDownload' in a) && !('arquivo' in a)));
+    assert.deepEqual(registrarAnexosTexto([], {uid:'pesador',pesagemId:'p1'}), []);
 });

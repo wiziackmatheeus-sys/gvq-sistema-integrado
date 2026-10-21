@@ -1,3 +1,5 @@
+import { ANEXOS_SOMENTE_TEXTO } from './configuracao.js';
+import { registrarAnexosTexto } from './anexos-texto.js';
 import { acompanharUpload, comPrazo } from './controle-envio.js';
 import { categoriaDocumento } from './documentos.js';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
@@ -6,6 +8,10 @@ storage.maxUploadRetryTime = 45000;
 storage.maxOperationRetryTime = 15000;
 
 export async function enviarAnexos(arquivos, { uid, pesagemId, financeiro = false, aoProgresso }) {
+    if (ANEXOS_SOMENTE_TEXTO) {
+        aoProgresso?.('Registrando nomes dos documentos...');
+        return registrarAnexosTexto(arquivos, { uid, pesagemId, financeiro });
+    }
     const enviados = [];
     try {
         for (const [indice, entrada] of arquivos.entries()) {
@@ -37,10 +43,11 @@ export async function enviarAnexos(arquivos, { uid, pesagemId, financeiro = fals
     }
 }
 export async function limparUploads(anexos) {
-    await Promise.allSettled(anexos.map(a => comPrazo(deleteObject(ref(storage, a.caminho)), 'Limpeza de arquivo sem resposta.', { ms: 5000 })));
+    await Promise.allSettled(anexos.filter(a => !a.somenteTexto && a.caminho && !a.caminho.startsWith('demonstracao/')).map(a => comPrazo(deleteObject(ref(storage, a.caminho)), 'Limpeza de arquivo sem resposta.', { ms: 5000 })));
 }
 export function unirAnexos(...listas) {
     return [...new Map(listas.flat().map(a => [a.caminho || a.urlDownload, a])).values()];
 }
+
 
 
