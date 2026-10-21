@@ -472,7 +472,7 @@ window.filtrarPendentes = function() {
     lista.forEach(p => {
         const tr = document.createElement('tr');
         [formatarData(p.dataCompra), p.pecuarista, p.pesador, p.fazendaDestino,
-            `${p.cabecas} cbç / ${p.pesoTotal} kg`].forEach(texto => {
+            `${p.cabecas} cabeças / ${p.pesoTotal} kg`].forEach(texto => {
             const td = document.createElement('td'); td.textContent = texto || '—'; tr.appendChild(td);
         });
         const td = document.createElement('td');
@@ -556,7 +556,7 @@ function renderizarHistorico(lista) {
         return;
     }
     lista.forEach(r => {
-        tbody.innerHTML += `<tr><td class="col-data"><strong>${escapeHtml(formatarData(r.dataCompra))}</strong></td><td class="col-destaque">${escapeHtml(r.pecuarista)}</td><td>${escapeHtml(r.cidade)} - ${escapeHtml(r.estado)}</td><td>${escapeHtml(r.fazendaDestino || '—')}</td><td class="col-num"><strong>${escapeHtml(r.cabecas)}</strong> cbç <span class="texto-suave">/ ${escapeHtml(r.pesoTotal)} kg</span></td>${ehPesador ? `<td>${r.status === 'enviado_escritorio' ? 'Enviado ao escritório' : 'Aguardando originador'}</td>` : ''}${ehPesador ? '<td class="col-documentos"></td>' : ''}</tr>`;
+        tbody.innerHTML += `<tr><td class="col-data"><strong>${escapeHtml(formatarData(r.dataCompra))}</strong></td><td class="col-destaque">${escapeHtml(r.pecuarista)}</td><td>${escapeHtml(r.cidade)} - ${escapeHtml(r.estado)}</td><td>${escapeHtml(r.fazendaDestino || '—')}</td><td class="col-num"><strong>${escapeHtml(r.cabecas)}</strong> cabeças <span class="texto-suave">/ ${escapeHtml(r.pesoTotal)} kg</span></td>${ehPesador ? `<td>${r.status === 'enviado_escritorio' ? 'Enviado ao escritório' : 'Aguardando originador'}</td>` : ''}${ehPesador ? '<td class="col-documentos"></td>' : ''}</tr>`;
         if (ehPesador) {
             const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'btn btn-secundario btn-sm';
             btn.textContent = 'Anexar documentos'; btn.onclick = () => abrirComplementos(r.id);
