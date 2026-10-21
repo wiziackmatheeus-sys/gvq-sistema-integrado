@@ -87,11 +87,12 @@ test('filtros de compras combinam código, fazenda, originador, etapa e mês com
     assert.equal(filtrarCompras(compras).length, 2);
     assert.equal(filtrarCompras(compras,{texto:'pecuarista barretos'}).length,2);
 });
-test('documentos possuem sete categorias opcionais e antigos ficam em Outros', () => {
-    assert.equal(tiposDocumento.length, 7);
+test('documentos possuem oito categorias opcionais e antigos ficam em Outros', () => {
+    assert.equal(tiposDocumento.length, 8);
     assert.equal(categoriaDocumento({}), 'outros');
     assert.equal(categoriaDocumento({ categoria: 'inexistente' }), 'outros');
     assert.equal(nomeDocumento({ categoria: 'gta' }), 'GTA');
+    assert.equal(nomeDocumento({ categoria: 'ordem_embarque_checklist' }), 'Ordem de embarque / checklist');
 });
 
 test('buscas ignoram acentos, combinam termos e filtros; nomes e raças seguem ordem pt-BR', () => {
@@ -103,3 +104,4 @@ test('buscas ignoram acentos, combinam termos e filtros; nomes e raças seguem o
     assert.deepEqual(['Nelore','Brangus','F1 Angus','Europeu','Cruzado'].sort(compararNomes),['Brangus','Cruzado','Europeu','F1 Angus','Nelore']);
     assert.equal(sugerirLogin(' João da Silva '),'joao.silva');
 });
+
