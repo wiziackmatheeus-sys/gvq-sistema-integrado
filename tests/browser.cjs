@@ -240,8 +240,9 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  await b.locator('#btn-registrar').click();await b.waitForTimeout(50);
  assert.equal(await b.evaluate(()=>window.__mock.data.romaneios.p1?.valorTotalGado),'R$\u00a06.505,00', 'Balanção sem alterações deve validar mesmo com campos em outra ordem');
  assert.equal(await b.evaluate(()=>window.__mock.data.romaneios.p1.revisaoValidada),1);assert.deepEqual(be,[]);
- const codigoCompra=await b.evaluate(()=>window.__mock.data.romaneios.p1.codigoCompra);
- assert.equal(codigoCompra,'OC-GVQ-202610-p1');
+ const codigoLegado=await b.evaluate(()=>window.__mock.data.romaneios.p1.codigoCompra);
+ const codigoCompra=await b.evaluate(()=>String(window.__mock.data.romaneios.p1.numeroCompra).padStart(6,'0'));
+ assert.equal(codigoCompra,'000001');
  console.log('PASS: originador preenche os campos obrigatórios e valida o registro.');
  const exportData=await b.evaluate(()=>window.__mock.data);
  exportData.romaneios.p1.pesosIndividuais=[300,350.5];
@@ -256,9 +257,11 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
   const download=await downloadPromise, csv=fs.readFileSync(await download.path(),'utf8').replace(/^\uFEFF/,'');
   assert.equal(download.suggestedFilename(),arquivo);
   assert.ok(csv.startsWith('Ordem de Compra;ID '));
-  assert.ok(csv.split('\n')[1].startsWith(codigoCompra+';p1;'));
+  assert.ok(csv.split('\n')[1].startsWith(codigoCompra+';'+codigoCompra+';'));
  }
  assert.deepEqual(exportErrors,[]);
+ assert.equal(await exportPage.evaluate(()=>window.__mock.data.romaneios.old.numeroCompra),2);
+ assert.equal(await exportPage.evaluate(()=>window.__mock.data.romaneios.p1.numeroCompra),1);
  // Filtros combinados, seleção restrita à lista e consulta ao histórico da compra correta.
  await exportPage.locator('#filtro-texto').fill('joao');
  await exportPage.locator('#filtro-codigo').fill(codigoCompra);
@@ -324,7 +327,7 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  assert.equal(await br.locator('#lista-arquivos-ui a').count(),1);assert.ok((await br.locator('#lista-arquivos-ui').innerText()).includes('GTA: GTA.pdf'));assert.equal(await br.locator('#campos-documentos [data-situacao=gta]').innerText(),'1 arquivo(s)');
  await br.locator('#rom_data_compra').fill('2026-11-01');
  await br.locator('#btn-registrar').click();await br.waitForTimeout(40);
- assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.codigoCompra),codigoCompra,'Correção do mês e revalidação preservam a ordem original');
+ assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.codigoCompra),codigoLegado,'Correção do mês e revalidação preservam a ordem original');
  assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.revisaoValidada),2);assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.anexosLinks.length),1);assert.deepEqual(bre,[]);
  console.log('PASS: complementação com upload simulado, bloqueio no escritório e revalidação sem perder negociação.');
  assert.equal(await br.evaluate(()=>window.__mock.data.romaneios.p1.etapaEscritorio),'recebida');
@@ -435,5 +438,6 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  }
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});
+
 
 

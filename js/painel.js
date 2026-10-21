@@ -2,7 +2,7 @@ import { comPrazo } from './controle-envio.js';
 import { criarRascunhoLocal } from './rascunho-local.js';
 import { compararNomes, normalizarTexto, buscarCompras } from './buscas.js';
 import { montarCamposDocumentos, atualizarSituacaoDocumentos, nomeDocumento } from './documentos.js';
-import { gerarCodigoCompra } from './codigo-compra.js';
+import { gerarCodigoCompra, reservarNumeroCompra, executarNumeracao } from './codigo-compra.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, runTransaction, getDoc, getDocsFromServer, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
@@ -534,7 +534,8 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
             const evento = doc(collection(db, 'romaneios', origem.id, 'historicoEscritorio'));
             enviados = await enviarAnexos(arquivosFilaGlobais, { uid: usuarioAtual.uid, pesagemId: origem.id, financeiro: true, aoProgresso: informarEnvio });
             informarEnvio('Confirmando validação no banco...');
-            await confirmarGravacao(runTransaction(db, async transacao => {
+            const contador = doc(db, 'contadores', 'compras');
+            await confirmarGravacao(executarNumeracao(leitura => runTransaction(db, async transacao => {
                 const snap = await transacao.get(origem);
                 if (!snap.exists() || snap.data().compradorUid !== usuarioAtual.uid || snap.data().status !== 'aguardando_comprador') {
                     throw new Error('Esta compra já foi validada ou não pertence a você.');
@@ -543,8 +544,9 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
                 const pesagem = snap.data();
                 const anterior = pesagem.validadoEm ? await transacao.get(destino) : null;
                 const codigoCompra = anterior?.data()?.codigoCompra || gerarCodigoCompra(dados, origem.id);
+                const numeroCompra = await reservarNumeroCompra(transacao, contador, anterior?.data(), origem.id, leitura);
                 transacao.set(destino, {
-                    ...dados, codigoCompra, anexosLinks: unirAnexos(anexosLinksExistentes, enviados),
+                    ...dados, codigoCompra, numeroCompra, anexosLinks: unirAnexos(anexosLinksExistentes, enviados),
                     anexosCaminhos: unirAnexos(anexosLinksExistentes, enviados).map(a => a.caminho).filter(Boolean),
                     compradorUid: usuarioAtual.uid, comprador: usuarioAtual.nome,
                     pesadorUid: pesagem.pesadorUid, pesador: pesagem.pesador, pesagemId: snap.id,
@@ -558,7 +560,7 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
                 transacao.set(evento, { tipo: 'validacao_originador', etapa: 'recebida', etapaAnterior: null,
                     usuarioUid: usuarioAtual.uid, usuario: usuarioAtual.nome, revisao: pesagem.revisao || 1, quando: serverTimestamp() });
                 transacao.update(origem, { status: 'enviado_escritorio', validadoEm: serverTimestamp() });
-            }));
+            }), async () => (await getDoc(contador)).data()?.valor || 0));
             gravado = true;
             alert('Compra validada e enviada ao escritório!');
         }
@@ -769,5 +771,6 @@ if (ehPesador) document.getElementById('form-complementos').addEventListener('su
 
 montarCamposDocumentos('campos-documentos', 'input_arquivos', window.adicionarAnexosFila);
 if (ehPesador) montarCamposDocumentos('campos-complementos', 'input_complementos', window.listarComplementos);
+
 
 
