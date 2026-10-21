@@ -27,7 +27,10 @@ export function serverTimestamp(){return 'SERVER_TIME'}
 function snap(name,id){const data=h().data[name]?.[id];return {id,exists:()=>!!data,data:()=>structuredClone(data)}}
 function emit(ref,callback){const docs=Object.entries(h().data[ref.name]||{}).filter(([id,d])=>(ref.filters||[]).every(f=>!f.field||(f.op==='in'?f.value.includes(d[f.field]):(f.field==='__name__'?id:d[f.field])===f.value))).map(([id])=>snap(ref.name,id));callback({docs,empty:!docs.length,forEach:f=>docs.forEach(f)})}
 function notify(){for(const {ref,callback,ativo} of listeners)if(ativo)emit(ref,callback)}
-export async function getDocsFromServer(ref){if(h().hangRead)return new Promise(()=>{});return getDocs(ref)}
+export async function getDocsFromServer(ref){if(h().hangRead)return new Promise(()=>{});
+ const alvo=ref.filters?.find(f=>f.field==='__name__'&&f.op==='==');
+ if(alvo&&!h().data[ref.name]?.[alvo.value])throw Object.assign(new Error('Missing or insufficient permissions.'),{code:'permission-denied'});
+ return getDocs(ref)}
 export async function getDocs(ref){let result;emit(ref,s=>result=s);return result}
 export async function getDoc(ref){h().reads.push(ref);return snap(ref.name,ref.id)}
 export function onSnapshot(ref,callback,error){h().reads.push(ref);const l={ref,callback,error,ativo:true};listeners.push(l);emit(ref,callback);return ()=>{l.ativo=false}}

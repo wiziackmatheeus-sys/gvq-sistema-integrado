@@ -504,9 +504,12 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
             // O mesmo ID é reutilizado em uma repetição após falha de conexão.
             const origem = rascunho ? doc(db, 'pesagens', rascunho.id) : doc(db, 'pesagens', envioPesadorId ||= doc(collection(db, 'pesagens')).id);
             informarEnvio('Conferindo envio anterior...');
-            const anteriores = await comPrazo(getDocsFromServer(query(collection(db, 'pesagens'), where('pesadorUid', '==', usuarioAtual.uid), where('__name__', '==', origem.id))), 'O banco não respondeu ao conferir o envio anterior. Tente novamente quando a conexão voltar.');
-            if (anteriores.docs.some(d => d.metadata?.hasPendingWrites)) throw Object.assign(new Error('Existe um envio aguardando confirmação. Confira a conexão e o histórico antes de tentar novamente.'), { resultadoIncerto: true });
-            if (!anteriores.empty) {
+            // Consultar o próprio histórico é permitido mesmo antes de a compra existir.
+            // Uma consulta pelo __name__ de um documento inexistente é negada pelas regras.
+            const historico = await comPrazo(getDocsFromServer(query(collection(db, 'pesagens'), where('pesadorUid', '==', usuarioAtual.uid))), 'O banco não respondeu ao conferir o envio anterior. Tente novamente quando a conexão voltar.');
+            const anteriores = historico.docs.filter(d => d.id === origem.id);
+            if (anteriores.some(d => d.metadata?.hasPendingWrites)) throw Object.assign(new Error('Existe um envio aguardando confirmação. Confira a conexão e o histórico antes de tentar novamente.'), { resultadoIncerto: true });
+            if (anteriores.length > 0) {
                 if (!confirm('Esta pesagem já foi enviada. Consulte o histórico. Deseja descartar este rascunho e iniciar outro preenchimento?')) return;
                 gravado = true;
                 if (rascunho) await comPrazo(rascunho.apagar(), 'Não foi possível limpar o rascunho neste aparelho.', { ms: 5000 });
@@ -771,6 +774,7 @@ if (ehPesador) document.getElementById('form-complementos').addEventListener('su
 
 montarCamposDocumentos('campos-documentos', 'input_arquivos', window.adicionarAnexosFila);
 if (ehPesador) montarCamposDocumentos('campos-complementos', 'input_complementos', window.listarComplementos);
+
 
 
 
