@@ -25,8 +25,9 @@ export function orderBy(){return {}}
 export function query(col,...filters){return {...col,filters}}
 export function serverTimestamp(){return 'SERVER_TIME'}
 function snap(name,id){const data=h().data[name]?.[id];return {id,exists:()=>!!data,data:()=>structuredClone(data)}}
-function emit(ref,callback){const docs=Object.entries(h().data[ref.name]||{}).filter(([id,d])=>(ref.filters||[]).every(f=>!f.field||(f.op==='in'?f.value.includes(d[f.field]):d[f.field]===f.value))).map(([id])=>snap(ref.name,id));callback({docs,empty:!docs.length,forEach:f=>docs.forEach(f)})}
+function emit(ref,callback){const docs=Object.entries(h().data[ref.name]||{}).filter(([id,d])=>(ref.filters||[]).every(f=>!f.field||(f.op==='in'?f.value.includes(d[f.field]):(f.field==='__name__'?id:d[f.field])===f.value))).map(([id])=>snap(ref.name,id));callback({docs,empty:!docs.length,forEach:f=>docs.forEach(f)})}
 function notify(){for(const {ref,callback,ativo} of listeners)if(ativo)emit(ref,callback)}
+export async function getDocs(ref){let result;emit(ref,s=>result=s);return result}
 export async function getDoc(ref){h().reads.push(ref);return snap(ref.name,ref.id)}
 export function onSnapshot(ref,callback,error){h().reads.push(ref);const l={ref,callback,error,ativo:true};listeners.push(l);emit(ref,callback);return ()=>{l.ativo=false}}
 export async function setDoc(ref,data){h().writes.push({name:ref.name,id:ref.id,data});h().data[ref.name]??={};h().data[ref.name][ref.id]=structuredClone(data);notify()}
@@ -47,8 +48,9 @@ const pending = {estado:'SP',cidade:'Barretos',fazendaDestino:'Fazenda GVQ',cida
 function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],data:data||{usuarios:{buyer1:{nome:'Ana Originadora',perfil:'originador',aprovado:true},buyer2:{nome:'Bruno Originador',perfil:'comprador',aprovado:true},weigher1:{nome:'Paulo Pesador',perfil:'pesador',aprovado:true,compradorUid:'buyer1',comprador:'Ana Originadora'},waiting:{nome:'Pedro Pesador',perfil:'pesador',aprovado:false},office1:{nome:'Olivia Escritório',perfil:'escritorio',aprovado:true},pendingOffice:{nome:'Escritório pendente',perfil:'escritorio',aprovado:false}},pesagens:{p1:pending,p2:{...pending,compradorUid:'buyer2',pesadorUid:'weigher2'}},romaneios:{old:{comprador:'Ana Originadora',pecuarista:'Legado',cabecas:'1',dataCompra:'2026-09-01'}},pecuaristas:{pec1:{nome:'João Pecuarista',cidade:'Barretos',estado:'SP',documento:'123',banco:'Banco',agencia:'1',conta:'2'}},destinos:{dest1:{nome:'Fazenda GVQ',cidade:'Ibitinga',estado:'SP'}}}}}
 (async()=>{
  const browser=await chromium.launch({headless:true,...(process.env.GVQ_CHROMIUM_PATH?{executablePath:process.env.GVQ_CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']}: {})});
- async function pageFor(uid,file,width=1280,data){
-  const page=await browser.newPage({viewport:{width,height:900}}), errors=[],alerts=[];
+ async function pageFor(uid,file,width=1280,data,context){
+  const contexto=context||await browser.newContext({viewport:{width,height:900}});
+  const page=await contexto.newPage(), errors=[],alerts=[];
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',async d=>{alerts.push(d.message());await d.accept()});
   await page.addInitScript(mock=>{window.__mock=mock},seed(uid,data));
   await page.route('**/*',async route=>{
@@ -121,6 +123,51 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  const {page:forcedLogin}=await pageFor('weigher1','index.html',1280,forced);await forcedLogin.locator('#login_usuario').fill('paulo.pesador');await forcedLogin.locator('#login_senha').fill('Temporaria-123');await forcedLogin.locator('#btn-entrar').click();await forcedLogin.waitForURL('**/trocar-senha.html');await forcedLogin.close();
  console.log('PASS: troca obrigatória no login e URL direta, confirmação e saída após trocar.');
 
+ // Rascunho incompleto, grade não confirmada e conteúdo dos anexos sobrevivem à recarga.
+ const {page:draft,errors:draftErrors}=await pageFor('weigher1','pages/pesador.html');
+ await draft.locator('#rom_obs').fill('Compra incompleta — preservar');
+ await draft.locator('#rom_uf').selectOption('SP');
+ await draft.locator('#rom_cidade').fill('Barretos');await draft.locator('#lista_cidades_ui .autocomplete-item').click();
+ await draft.locator('#rom_raca').selectOption('outro');await draft.locator('#rom_raca_outra').fill('Raça de teste');
+ await draft.locator('#input_arquivos_romaneio_manual').setInputFiles({name:'rascunho.pdf',mimeType:'application/pdf',buffer:Buffer.from('PDF preservado')});
+ await draft.evaluate(()=>window.mostrarTelaPesagem());await draft.locator('#peso_ind_1').fill('303.25');
+ await draft.waitForFunction(()=>document.getElementById('situacao-rascunho').textContent.startsWith('Rascunho salvo'));
+ assert.equal(await draft.evaluate(()=>window.__mock.writes.length),0);
+ await draft.reload();await draft.waitForFunction(()=>document.getElementById('situacao-rascunho').textContent.includes('recuperado'));
+ assert.equal(await draft.locator('#rom_obs').inputValue(),'Compra incompleta — preservar');
+ assert.equal(await draft.locator('#rom_cidade').inputValue(),'Barretos');
+ assert.equal(await draft.locator('#rom_raca_outra').inputValue(),'Raça de teste');
+ assert.ok((await draft.locator('#lista-arquivos-ui').innerText()).includes('rascunho.pdf'));
+ await draft.evaluate(()=>window.mostrarTelaPesagem());assert.equal(await draft.locator('#peso_ind_1').inputValue(),'303.25');
+ // O UID vem da sessão; outro pesador no mesmo navegador não recupera o rascunho.
+ const otherData=seed('weigher2').data;otherData.usuarios.weigher2={...otherData.usuarios.weigher1,nome:'Outro Pesador'};
+ const {page:other}=await pageFor('weigher2','pages/pesador.html',1280,otherData,draft.context());
+ assert.equal(await other.locator('#rom_obs').inputValue(),'');await other.close();
+ // Duas abas da mesma conta não podem sobrescrever silenciosamente a mesma revisão.
+ const {page:secondDraft}=await pageFor('weigher1','pages/pesador.html',1280,undefined,draft.context());
+ await draft.evaluate(()=>window.voltarTelaPrincipal());await draft.locator('#rom_obs').fill('Versão mais recente');
+ await draft.waitForFunction(()=>document.getElementById('situacao-rascunho').textContent.startsWith('Rascunho salvo'));
+ await secondDraft.locator('#rom_obs').fill('Versão antiga');
+ await secondDraft.waitForFunction(()=>document.getElementById('situacao-rascunho').textContent.includes('outra aba'));
+ await secondDraft.close();
+ await draft.reload();await draft.waitForFunction(()=>document.getElementById('situacao-rascunho').textContent.includes('recuperado'));
+ assert.equal(await draft.locator('#rom_obs').inputValue(),'Versão mais recente');
+ // Arquivo recuperado é enviado com o conteúdo original; falha de upload mantém o rascunho.
+ await fillOperacional(draft);await draft.evaluate(()=>window.__mock.failUpload=true);
+ await draft.locator('#btn-registrar').click();
+ await draft.waitForFunction(()=>!document.getElementById('btn-registrar').disabled);
+ await draft.reload();await draft.waitForFunction(()=>document.getElementById('situacao-rascunho').textContent.includes('recuperado'));
+ assert.equal(await draft.locator('#rom_obs').inputValue(),'Versão mais recente');
+ await draft.locator('#btn-registrar').click();await draft.waitForFunction(()=>window.__mock.writes.length===1);
+ await draft.waitForFunction(()=>document.getElementById('rom_obs').value==='');
+ assert.equal(await draft.evaluate(()=>window.__mock.uploads[0].size),Buffer.byteLength('PDF preservado'));
+ await draft.reload();await draft.waitForFunction(()=>!document.getElementById('form-romaneio').inert);
+ assert.equal(await draft.locator('#rom_obs').inputValue(),'');assert.equal(await draft.locator('#lista-arquivos-ui .item-anexo').count(),0);
+ await draft.locator('#rom_obs').fill('Descartar');await draft.locator('#btn-salvar-rascunho').click();
+ await draft.locator('#btn-descartar-rascunho').click();await draft.waitForFunction(()=>document.getElementById('rom_obs').value==='');
+ await draft.reload();await draft.waitForFunction(()=>!document.getElementById('form-romaneio').inert);
+ assert.equal(await draft.locator('#rom_obs').inputValue(),'');assert.deepEqual(draftErrors,[]);await draft.close();
+ console.log('PASS: rascunho automático recupera campos, pesos e arquivos; isola contas, detecta conflitos e limpa após envio ou descarte.');
  const {page:w,errors:we}=await pageFor('weigher1','pages/pesador.html');
  assert.equal(await w.locator('#rom_originador').inputValue(),'Ana Originadora');assert.equal(await w.locator('#rom_comprador').count(),0);
  assert.equal(await w.evaluate(()=>window.__mock.reads.some(r=>r.name==='usuarios'&&!r.id)),false);
@@ -149,7 +196,7 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  console.log('PASS: nota fiscal, foto e vídeo opcionais conservam categorias e nomes repetidos.');
 
  // Originador revisa um novo registro gerado pela tela do pesador.
- let data=await w.evaluate(()=>window.__mock.data);data.pesagens={p1:{...data.pesagens['new-id']}};
+ let data=await w.evaluate(()=>window.__mock.data);data.pesagens={p1:{...data.pesagens[writes[0].id]}};
  const {page:b,errors:be}=await pageFor('buyer1','pages/painel.html',1280,data);
  await b.getByRole('button',{name:'Conferir',exact:true}).click();
  assert.equal(await b.locator('#rom_raca').inputValue(),'F1 Angus');assert.equal(await b.locator('#rom_peso_medio').inputValue(),'325.25');
@@ -358,3 +405,4 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  }
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});
+

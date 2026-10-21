@@ -45,7 +45,15 @@
                         </div>
                     </header>
 
-                    <form id="form-romaneio">
+                    <section class="card rascunho-pesador" aria-label="Rascunho da compra">
+                        <p id="situacao-rascunho" role="status">Carregando rascunho...</p>
+                        <p class="texto-suave">Salvo neste navegador e aparelho, somente para sua conta. Não é enviado ao originador. Limpar os dados do navegador remove o rascunho.</p>
+                        <div class="rascunho-acoes">
+                            <button type="button" class="btn btn-secundario" id="btn-salvar-rascunho">Salvar rascunho</button>
+                            <button type="button" class="btn btn-fantasma" id="btn-descartar-rascunho">Descartar rascunho</button>
+                        </div>
+                    </section>
+                    <form id="form-romaneio" inert>
 
                         <section class="card">
                             <div class="card-cabecalho">
@@ -321,4 +329,5 @@
     <script type="module" src="../js/painel.js"></script>
 </body>
 </html>
+
 
