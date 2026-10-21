@@ -1,4 +1,5 @@
 import { reservarNumeroCompra, temNumeroCompra, executarNumeracao } from '../js/codigo-compra.js';
+import { registrarAnexosTexto } from '../js/anexos-texto.js';
 import { before, after, beforeEach, test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
@@ -69,6 +70,22 @@ test('pesador envia somente para seu originador e somente após aprovação', as
     await assertFails(setDoc(doc(db('weigher1'), 'pesagens', 'outro'), { ...pesagem(), compradorUid: 'buyer2', comprador: 'Bruno' }));
     await assertFails(setDoc(doc(db('waiting'), 'pesagens', 'novo'), { ...pesagem(), pesadorUid: 'waiting' }));
     await assertFails(setDoc(doc(db('weigher1'), 'pesagens', 'financeiro'), { ...pesagem(), precoUnitario: '100' }));
+});
+test('regras aceitam nomes em demonstração sem URL ou arquivo e preservam isolamento', async () => {
+    const anexosLinks = registrarAnexosTexto([
+        { arquivo: { name: 'documento.pdf' }, categoria: 'nota_fiscal' },
+        { arquivo: { name: 'documento.pdf' }, categoria: 'ordem_embarque_checklist' }
+    ], { uid: 'weigher1', pesagemId: 'demo' });
+    await assertSucceeds(setDoc(doc(db('weigher1'), 'pesagens', 'demo'), {
+        ...pesagem(), anexosLinks, anexos: anexosLinks.map(a => a.nomeArquivo), anexosCaminhos: anexosLinks.map(a => a.caminho)
+    }));
+    const recebido = await assertSucceeds(getDoc(doc(db('buyer1'), 'pesagens', 'demo')));
+    if (recebido.data().anexosLinks.length !== 2 || recebido.data().anexosLinks.some(a => !a.somenteTexto || a.urlDownload)) throw new Error('Metadados de demonstração divergentes');
+    await assertFails(getDoc(doc(db('buyer2'), 'pesagens', 'demo')));
+    const complementoTexto = registrarAnexosTexto([{ arquivo: { name: 'GTA.pdf' }, categoria: 'gta' }], { uid: 'weigher1', pesagemId: 'p1' });
+    await assertSucceeds(complemento(db('weigher1'), {
+        anexos: ['GTA.pdf'], anexosLinks: complementoTexto, anexosCaminhos: complementoTexto.map(a => a.caminho)
+    }, false));
 });
 test('balanção sem pesos individuais é permitida; campos obrigatórios e média são verificados', async () => {
     const d = db('weigher1');
@@ -268,3 +285,4 @@ test('consulta de envio anterior permite criar compra nova e localizar repetiç�
     if (outras.docs.some(d => d.id === id)) throw new Error('Vazamento para outro pesador');
     await assertFails(getDoc(doc(db('weigher2'), 'pesagens', id)));
 });
+

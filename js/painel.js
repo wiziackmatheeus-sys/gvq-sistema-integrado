@@ -279,7 +279,7 @@ function renderizarFilaArquivos() {
         const nome = anexo.nomeArquivo;
         const item = document.createElement('div'); item.className = 'item-anexo';
         const texto = document.createElement('span'); texto.className = 'item-anexo-texto';
-        texto.textContent = nomeDocumento(anexo) + ': ' + nome; item.appendChild(texto);
+        texto.textContent = nomeDocumento(anexo) + ': ' + nome + (anexo.somenteTexto ? ' (somente nome)' : ''); item.appendChild(texto);
         if (anexo) { const link = criarLinkAnexo(anexo); if (link) item.appendChild(link); }
         divUi.appendChild(item);
     });
@@ -705,6 +705,7 @@ window.limparFiltrosHistorico = function() {
 };
 
 function criarLinkAnexo(anexo) {
+    if (anexo.somenteTexto) return null;
     try {
         if (new URL(anexo.urlDownload).protocol !== 'https:') return null;
         const link = document.createElement('a'); link.href = anexo.urlDownload; link.target = '_blank';
@@ -725,7 +726,7 @@ async function abrirComplementos(id) {
         const lista = document.getElementById('documentos-existentes'); lista.replaceChildren();
         (snap.data().anexosLinks || []).forEach(anexo => {
             const linha = document.createElement('div'); linha.className = 'item-anexo';
-            const texto = document.createElement('span'); texto.className = 'item-anexo-texto'; texto.textContent = nomeDocumento(anexo) + ': ' + anexo.nomeArquivo;
+            const texto = document.createElement('span'); texto.className = 'item-anexo-texto'; texto.textContent = nomeDocumento(anexo) + ': ' + anexo.nomeArquivo + (anexo.somenteTexto ? ' (somente nome)' : '');
             linha.appendChild(texto); const link = criarLinkAnexo(anexo); if (link) linha.appendChild(link); lista.appendChild(linha);
         });
         abrirTela('tela-documentos', 'nav-historico');
@@ -774,6 +775,7 @@ if (ehPesador) document.getElementById('form-complementos').addEventListener('su
 
 montarCamposDocumentos('campos-documentos', 'input_arquivos', window.adicionarAnexosFila);
 if (ehPesador) montarCamposDocumentos('campos-complementos', 'input_complementos', window.listarComplementos);
+
 
 
 

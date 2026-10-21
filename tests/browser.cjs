@@ -59,7 +59,7 @@ const pending = {estado:'SP',cidade:'Barretos',fazendaDestino:'Fazenda GVQ',cida
 function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],data:data||{usuarios:{buyer1:{nome:'Ana Originadora',perfil:'originador',aprovado:true},buyer2:{nome:'Bruno Originador',perfil:'comprador',aprovado:true},weigher1:{nome:'Paulo Pesador',perfil:'pesador',aprovado:true,compradorUid:'buyer1',comprador:'Ana Originadora'},waiting:{nome:'Pedro Pesador',perfil:'pesador',aprovado:false},office1:{nome:'Olivia Escritório',perfil:'escritorio',aprovado:true},pendingOffice:{nome:'Escritório pendente',perfil:'escritorio',aprovado:false}},pesagens:{p1:pending,p2:{...pending,compradorUid:'buyer2',pesadorUid:'weigher2'}},romaneios:{old:{comprador:'Ana Originadora',pecuarista:'Legado',cabecas:'1',dataCompra:'2026-09-01'}},pecuaristas:{pec1:{nome:'João Pecuarista',cidade:'Barretos',estado:'SP',documento:'123',banco:'Banco',agencia:'1',conta:'2'}},destinos:{dest1:{nome:'Fazenda GVQ',cidade:'Ibitinga',estado:'SP'}}}}}
 (async()=>{
  const browser=await chromium.launch({headless:true,...(process.env.GVQ_CHROMIUM_PATH?{executablePath:process.env.GVQ_CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']}: {})});
- async function pageFor(uid,file,width=1280,data,context){
+ async function pageFor(uid,file,width=1280,data,context,somenteTexto=false){
   const contexto=context||await browser.newContext({viewport:{width,height:900}});
   const page=await contexto.newPage(), errors=[],alerts=[];
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',async d=>{alerts.push(d.message());await d.accept()});
@@ -69,6 +69,7 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
    if(u.hostname==='www.gstatic.com')return route.fulfill({contentType:'application/javascript',body:firebaseMock});
    if(u.hostname==='servicodados.ibge.gov.br')return route.fulfill({contentType:'application/json',body:JSON.stringify(u.pathname.includes('municipios')?[{nome:'Barretos'}]:[{sigla:'SP',nome:'São Paulo'}])});
    if(u.hostname!=='gvq.local')return route.abort();
+   if(u.pathname==='/js/configuracao.js')return route.fulfill({contentType:'application/javascript',body:'export const ANEXOS_SOMENTE_TEXTO = '+somenteTexto+';'});
    if(u.pathname==='/js/firebase.js')return route.fulfill({contentType:'application/javascript',body:"export {app,auth,db,storage} from 'https://www.gstatic.com/mock.js';"});
    if(original&&u.pathname==='/original.html')return route.fulfill({contentType:'text/html',body:original.replaceAll('../','/').replace(/<script[^>]+src="\/js\/painel.js"><\/script>/,'')});
    const f=path.join(root,u.pathname);if(!fs.existsSync(f))return route.fulfill({status:404,body:''});
@@ -85,6 +86,49 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
   if(individual){await p.evaluate(()=>window.mostrarTelaPesagem());await p.locator('#peso_ind_1').fill('300');await p.locator('#peso_ind_2').fill('350.5');await p.evaluate(()=>window.salvarPesosGrid())}
   else{await p.locator('#rom_cabecas').fill('2');await p.locator('#rom_peso_total').fill('650.5')}
  }
+ // Demonstração: fluxo completo sem Storage, mesmo indisponível.
+ const {page:demo,errors:demoErrors}=await pageFor('weigher1','pages/pesador.html',1280,undefined,undefined,true);
+ await fillOperacional(demo);await demo.evaluate(()=>window.__mock.failUpload=true);
+ const documento={name:'documento.pdf',mimeType:'application/pdf',buffer:Buffer.from('Conteúdo não enviado')};
+ await demo.locator('#input_arquivos_nota_fiscal').setInputFiles(documento);
+ await demo.locator('#input_arquivos_ordem_embarque_checklist').setInputFiles(documento);
+ await demo.locator('#btn-registrar').click();await demo.waitForFunction(()=>window.__mock.writes.length===1);
+ let demoData=await demo.evaluate(()=>window.__mock.data);
+ const demoCompra=await demo.evaluate(()=>window.__mock.writes[0].data);
+ assert.equal(demoCompra.anexosLinks.length,2);
+ assert.deepEqual(demoCompra.anexosLinks.map(a=>a.categoria),['nota_fiscal','ordem_embarque_checklist']);
+ assert.ok(demoCompra.anexosLinks.every(a=>a.somenteTexto&&!a.urlDownload));
+ assert.deepEqual(await demo.evaluate(()=>[window.__mock.uploads,window.__mock.deleted]),[[],[]]);
+ demoData.pesagens={p1:demoCompra};
+ const {page:demoBuyer,errors:demoBuyerErrors}=await pageFor('buyer1','pages/painel.html',1280,demoData,undefined,true);
+ await demoBuyer.getByRole('button',{name:'Conferir',exact:true}).click();
+ assert.equal(await demoBuyer.locator('#lista-arquivos-ui a').count(),0);
+ await demoBuyer.locator('#rom_preco').fill('300');await demoBuyer.locator('#rom_corretor').fill('Sem corretor');
+ await demoBuyer.locator('#btn-registrar').click();await demoBuyer.waitForFunction(()=>window.__mock.data.romaneios.p1);
+ demoData=await demoBuyer.evaluate(()=>window.__mock.data);
+ assert.equal(demoData.romaneios.p1.anexosLinks.length,2);
+ const {page:demoComplement,errors:demoComplementErrors}=await pageFor('weigher1','pages/pesador.html',1280,demoData,undefined,true);
+ await demoComplement.evaluate(()=>{window.__mock.failUpload=true;window.mostrarTelaHistorico()});
+ await demoComplement.getByRole('button',{name:'Anexar documentos'}).click();
+ await demoComplement.locator('#input_complementos_gta').setInputFiles({name:'GTA.pdf',mimeType:'application/pdf',buffer:Buffer.from('GTA')});
+ await demoComplement.locator('#btn-complementar').click();await demoComplement.waitForFunction(()=>window.__mock.data.pesagens.p1.revisao===2);
+ demoData=await demoComplement.evaluate(()=>window.__mock.data);
+ assert.equal(demoData.romaneios.p1.status,'aguardando_revalidacao');
+ assert.deepEqual(await demoComplement.evaluate(()=>[window.__mock.uploads,window.__mock.deleted]),[[],[]]);
+ const {page:demoRevalidate,errors:demoRevalidateErrors}=await pageFor('buyer1','pages/painel.html',1280,demoData,undefined,true);
+ await demoRevalidate.getByRole('button',{name:'Revalidar',exact:true}).click();
+ await demoRevalidate.locator('#btn-registrar').click();await demoRevalidate.waitForFunction(()=>window.__mock.data.romaneios.p1.revisaoValidada===2);
+ demoData=await demoRevalidate.evaluate(()=>window.__mock.data);
+ const {page:demoOffice,errors:demoOfficeErrors}=await pageFor('office1','pages/escritorio.html',1280,demoData,undefined,true);
+ const demoRow=demoOffice.locator('#tbody-romaneios tr').filter({hasText:'João Pecuarista'});
+ await demoRow.locator('summary').click();
+ assert.ok((await demoRow.innerText()).includes('documento.pdf (somente nome)')); 
+ assert.ok((await demoRow.innerText()).includes('GTA.pdf (somente nome)'));
+ assert.equal(await demoRow.locator('a.tag-link').count(),0);
+ assert.equal(demoData.romaneios.p1.anexosLinks.length,3);
+ for(const errs of [demoErrors,demoBuyerErrors,demoComplementErrors,demoRevalidateErrors,demoOfficeErrors])assert.deepEqual(errs,[]);
+ for(const p of [demo,demoBuyer,demoComplement,demoRevalidate,demoOffice])await p.close();
+ console.log('PASS: demonstração registra nomes, complementa, revalida e exibe no escritório sem Storage.');
  // A página pública permite apenas entrar; contas anteriores pendentes continuam bloqueadas.
  const {page:signup,errors:se}=await pageFor('new-user','index.html');
  assert.equal(await signup.getByText('Para obter acesso, solicite seu cadastro ao escritório.',{exact:true}).count(),0);assert.equal(await signup.locator('#form-cadastro').count(),0);assert.equal(await signup.getByRole('button',{name:'Nova conta',exact:true}).count(),0);assert.deepEqual(se,[]);
@@ -439,6 +483,7 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  }
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});
+
 
 
 

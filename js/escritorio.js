@@ -257,8 +257,8 @@ function resumoDocumentos(compra) {
     return `<details><summary>Documentos (${anexos.length})</summary>` + tiposDocumento.map(([tipo,nome]) => {
         const arquivos = anexos.filter(a => categoriaDocumento(a) === tipo);
         const links = arquivos.map(a => {
-            let seguro = false; try { seguro = new URL(a.urlDownload).protocol === 'https:'; } catch {}
-            const texto = `<span class="tag-texto">${escapeHtml(a.nomeArquivo)}</span>`;
+            let seguro = false; try { seguro = !a.somenteTexto && new URL(a.urlDownload).protocol === 'https:'; } catch {}
+            const texto = `<span class="tag-texto">${escapeHtml(a.nomeArquivo)}${a.somenteTexto ? ' (somente nome)' : ''}</span>`;
             return seguro ? `<a class="tag tag-indigo tag-anexo tag-link" href="${escapeHtml(a.urlDownload)}" target="_blank" rel="noopener noreferrer">${texto}</a>` : `<span class="tag tag-anexo">${texto}</span>`;
         }).join('<br>');
         return `<div><strong>${nome}</strong><br>${links || '<span class="texto-suave">Não anexado (opcional)</span>'}</div>`;
@@ -488,4 +488,5 @@ function abrirHistoricoCompra(compra) {
 }
 
 ['pecuaristas','destinos'].forEach(tipo => document.getElementById('busca-' + tipo).addEventListener('input',event => aplicarBuscaTabela('tbody-' + tipo,event.target.value)));
+
 
