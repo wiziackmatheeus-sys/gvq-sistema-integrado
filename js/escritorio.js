@@ -19,12 +19,12 @@ let cancelarHistorico = null;
 const sessao = criarControleSessao(error => alert('Não foi possível carregar os dados: ' + error.message));
 
 const bancosBrasileiros = [
-    "BANCO DO BRASIL S.A. - 001", "CAIXA ECONOMICA FEDERAL - 104", "BANCO BRADESCO S.A. - 237",
+    "BANCO DO BRASIL S.A. - 001", "CAIXA ECONÔMICA FEDERAL - 104", "BANCO BRADESCO S.A. - 237",
     "ITAÚ UNIBANCO S.A. - 341", "BANCO SANTANDER (BRASIL) S.A. - 033", "BANCO SICOOB S.A. - 756",
     "BANCO SICREDI S.A. - 748", "NUBANK - 260", "BANCO INTER S.A. - 077", "C6 BANK - 336",
     "BANCO BTG PACTUAL S.A. - 208", "BANCO SAFRA S.A. - 422", "BANCO ORIGINAL S.A. - 212",
     "BANCO PAN S.A. - 623", "BANCO MERCANTIL DO BRASIL S.A. - 389", "BANCO NORDESTE DO BRASIL S.A. - 004",
-    "BANCO DA AMAZONIA S.A. - 003", "BRB - BANCO DE BRASILIA S.A. - 070"
+    "BANCO DA AMAZÔNIA S.A. - 003", "BRB - BANCO DE BRASÍLIA S.A. - 070"
 ];
 
 onAuthStateChanged(auth, async (user) => {
@@ -305,7 +305,7 @@ window.adicionarDestino = async function() {
         document.getElementById('novo_dest_uf').value = '';
         document.getElementById('novo_dest_cidade').value = '';
         document.getElementById('lista_cidades_dest').innerHTML = ''; 
-        alert('Fazenda Destino cadastrada com sucesso!');
+        alert('Fazenda de destino cadastrada com sucesso!');
         
     } catch (error) {
         alert("Ocorreu um erro ao salvar: " + error.message);

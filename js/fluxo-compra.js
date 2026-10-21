@@ -32,7 +32,7 @@ export function validarPesagem(dados) {
         if (!pesos.length || pesos.some(p => !Number.isFinite(p) || p <= 0)) throw new Error('Lance e confirme os pesos individuais.');
         const total = pesos.reduce((soma, peso) => soma + peso, 0);
         if (!Number.isFinite(total) || Number(dados.cabecas) !== pesos.length || Math.abs(Number(dados.pesoTotal) - total) > 0.011) {
-            throw new Error('Cabeças e peso total diferem dos pesos individuais. Confirme os pesos ou selecione Balanção.');
+            throw new Error('Cabeças e peso total diferem dos pesos individuais. Confirme os pesos ou selecione Balancão.');
         }
     } else if (dados.tipoPesagem !== 'balancao' || pesos.length) throw new Error('Selecione o tipo de pesagem e confirme os pesos.');
 }
