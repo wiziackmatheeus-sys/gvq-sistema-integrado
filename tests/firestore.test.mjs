@@ -252,3 +252,19 @@ test('ninguém reserva número isolado, pula sequência ou numera compra alheia'
     c.update(doc(d, 'romaneios', 'other'), {numeroCompra: 1});
     await assertFails(c.commit());
 });
+
+test('consulta de envio anterior permite criar compra nova e localizar repetição sem acessar compras alheias', async () => {
+    const d = db('weigher1'), id = '64fc9f6f-9567-4f54-9ceb-e61b40cd8421';
+    // Reproduz o bloqueio anterior: o alvo não existe e não há resource para avaliar.
+    await assertFails(getDocs(query(collection(d, 'pesagens'), where('pesadorUid', '==', 'weigher1'), where('__name__', '==', id))));
+    const minhas = query(collection(d, 'pesagens'), where('pesadorUid', '==', 'weigher1'));
+    const antes = await assertSucceeds(getDocs(minhas));
+    if (antes.docs.some(d => d.id === id)) throw new Error('Compra inesperada');
+    await assertSucceeds(setDoc(doc(d, 'pesagens', id), pesagem()));
+    const depois = await assertSucceeds(getDocs(minhas));
+    if (depois.docs.filter(d => d.id === id).length !== 1) throw new Error('Envio anterior não localizado');
+    await assertSucceeds(getDoc(doc(db('buyer1'), 'pesagens', id)));
+    const outras = await assertSucceeds(getDocs(query(collection(db('weigher2'), 'pesagens'), where('pesadorUid', '==', 'weigher2'))));
+    if (outras.docs.some(d => d.id === id)) throw new Error('Vazamento para outro pesador');
+    await assertFails(getDoc(doc(db('weigher2'), 'pesagens', id)));
+});
