@@ -1,3 +1,4 @@
+import { codigoDaCompra } from './codigo-compra.js';
 export const normalizarTexto = valor => String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 export const compararNomes = (a,b) => String(a || '').localeCompare(String(b || ''),'pt-BR',{ sensitivity: 'base', numeric: true });
 export function sugerirLogin(nome) {
@@ -7,7 +8,7 @@ export function sugerirLogin(nome) {
 export function buscarCompras(lista, { texto = '', data = '', mes = '', status = '', tipo = '' } = {}) {
     const termos = normalizarTexto(texto).split(/\s+/).filter(Boolean);
     return lista.filter(r => {
-        const conteudo = normalizarTexto([r.codigoCompra,r.id,r.pecuarista,r.pesador,r.comprador,r.fazendaDestino,r.cidade,r.estado,r.raca,r.sexo].join(' '));
+        const conteudo = normalizarTexto([codigoDaCompra(r),r.codigoCompra,r.id,r.pecuarista,r.pesador,r.comprador,r.fazendaDestino,r.cidade,r.estado,r.raca,r.sexo].join(' '));
         return termos.every(t => conteudo.includes(t)) && (!data || r.dataCompra === data)
             && (!mes || r.dataCompra?.startsWith(mes)) && (!status || (r.status || 'enviado_escritorio') === status)
             && (!tipo || (tipo === 'revalidacao' ? !!r.validadoEm : !r.validadoEm));
@@ -25,3 +26,4 @@ export function aplicarBuscaTabela(tbodyId, busca) {
         tr.appendChild(td); tbody.appendChild(tr);
     }
 }
+

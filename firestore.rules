@@ -3,10 +3,16 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function logado() { return request.auth != null; }
     function usuario() { return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data; }
-    function perfil(nome) { return logado() && usuario().perfil == nome && usuario().aprovado == true && usuario().get('trocaSenhaObrigatoria', false) == false
-        && (!('sessaoRevogadaEm' in usuario()) || request.auth.token.get('auth_time', 0) > usuario().sessaoRevogadaEm); }
-    function originador() { return logado() && usuario().perfil in ['originador', 'comprador'] && usuario().aprovado == true && usuario().get('trocaSenhaObrigatoria', false) == false
-        && (!('sessaoRevogadaEm' in usuario()) || request.auth.token.get('auth_time', 0) > usuario().sessaoRevogadaEm); }
+    function perfil(nome) {
+      let u = logado() ? usuario() : {};
+      return logado() && u.perfil == nome && u.aprovado == true && u.get('trocaSenhaObrigatoria', false) == false
+        && (!('sessaoRevogadaEm' in u) || request.auth.token.get('auth_time', 0) > u.sessaoRevogadaEm);
+    }
+    function originador() {
+      let u = logado() ? usuario() : {};
+      return logado() && u.perfil in ['originador', 'comprador'] && u.aprovado == true && u.get('trocaSenhaObrigatoria', false) == false
+        && (!('sessaoRevogadaEm' in u) || request.auth.token.get('auth_time', 0) > u.sessaoRevogadaEm);
+    }
     function pesador() { return perfil('pesador') && usuario().get('compradorUid', '') != ''; }
     function escritorio() { return perfil('escritorio'); }
     function operacional() { return originador() || pesador() || escritorio(); }
@@ -71,6 +77,39 @@ service cloud.firestore {
              && d.responsavelEscritorio == resource.data.responsavelEscritorio
              && d.finalizadoPorUid == request.auth.uid && d.finalizadoPor == usuario().nome && d.finalizadoEm == request.time));
     }
+    function proximoNumeroValido(id) {
+      let contador = getAfter(/databases/$(database)/documents/contadores/compras).data;
+      let anterior = exists(/databases/$(database)/documents/contadores/compras)
+        ? get(/databases/$(database)/documents/contadores/compras).data.valor : 0;
+      return contador.compraId == id && contador.valor == request.resource.data.numeroCompra
+        && contador.valor == anterior + 1;
+    }
+    function numeroCompraValido(id) {
+      let d = request.resource.data;
+      return d.numeroCompra is int && d.numeroCompra > 0 && d.numeroCompra <= 999999999
+        && (exists(/databases/$(database)/documents/romaneios/$(id)) && 'numeroCompra' in resource.data
+          ? d.numeroCompra == resource.data.numeroCompra : proximoNumeroValido(id));
+    }
+    function numeracaoLegadaValida(id) {
+      return !('numeroCompra' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['numeroCompra'])
+        && escritorio() && numeroCompraValido(id);
+    }
+    function reservaValida() {
+      let d = request.resource.data;
+      let u = usuario();
+      let alvo = /databases/$(database)/documents/romaneios/$(d.compraId);
+      let anterior = exists(alvo) ? get(alvo).data : {};
+      let depois = getAfter(alvo).data;
+      let valorAtual = exists(/databases/$(database)/documents/contadores/compras) ? resource.data.valor : 0;
+      return u.perfil in ['escritorio', 'originador', 'comprador'] && u.aprovado == true
+        && u.get('trocaSenhaObrigatoria', false) == false
+        && (!('sessaoRevogadaEm' in u) || request.auth.token.get('auth_time', 0) > u.sessaoRevogadaEm)
+        && d.keys().hasOnly(['valor', 'compraId']) && d.valor is int && d.valor > 0 && d.valor <= 999999999
+        && d.compraId is string && d.compraId.size() > 0 && d.compraId.size() <= 128
+        && d.valor == valorAtual + 1 && !('numeroCompra' in anterior) && depois.numeroCompra == d.valor
+        && (u.perfil == 'escritorio' ? exists(alvo) : depois.compradorUid == request.auth.uid);
+    }
     function finalizacaoValida(id) {
       let d = request.resource.data;
       let p = get(/databases/$(database)/documents/pesagens/$(id)).data;
@@ -80,6 +119,7 @@ service cloud.firestore {
         && d.pesadorUid == p.pesadorUid && d.pesador == p.pesador
         && d.revisaoValidada == p.get('revisao', 1)
         && d.status == 'enviado_escritorio' && d.validadoEm == request.time && d.timestamp == request.time
+        && numeroCompraValido(id)
         && d.codigoCompra is string && d.codigoCompra.size() <= 140
         && d.codigoCompra.matches('OC-[A-Z0-9-]+-[0-9]{6}-' + id)
         && (!exists(/databases/$(database)/documents/romaneios/$(id))
@@ -92,6 +132,11 @@ service cloud.firestore {
         && d.tipoComissao in ['Nenhuma', 'Fixo', 'Por Cabeça', '% do Romaneio']
         && float(d.valorComissao) >= 0 && (d.tipoComissao != 'Nenhuma' || float(d.valorComissao) == 0)
         && d.valorTotalGado is string && d.valorTotalGado.size() > 0 && d.totalComissao is string && d.totalComissao.size() > 0;
+    }
+    match /contadores/compras {
+      allow read: if escritorio() || originador();
+      allow create, update: if logado() && reservaValida();
+      allow delete: if false;
     }
     match /usuarios/{uid} {
       // Apenas o escritório lista usuários e originadores; o pesador lê só seu próprio vínculo.
@@ -144,7 +189,7 @@ service cloud.firestore {
       // as versões em revalidação. Nenhum documento novo do pesador chega aqui antes da validação.
       allow read: if escritorio() || (originador() && resource.data.compradorUid == request.auth.uid);
       allow create: if finalizacaoValida(id);
-      allow update: if (escritorio() && alteracaoEscritorioValida(id)) || (resource.data.get('status', '') == 'aguardando_revalidacao' && finalizacaoValida(id)) || (
+      allow update: if numeracaoLegadaValida(id) || (escritorio() && alteracaoEscritorioValida(id)) || (resource.data.get('status', '') == 'aguardando_revalidacao' && finalizacaoValida(id)) || (
         pesador() && resource.data.pesadorUid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'revalidacaoSolicitadaEm'])
         && request.resource.data.status == 'aguardando_revalidacao' && request.resource.data.revalidacaoSolicitadaEm == request.time
@@ -178,3 +223,4 @@ service cloud.firestore {
     match /destinos/{id} { allow read: if operacional(); allow write: if escritorio(); }
   }
 }
+

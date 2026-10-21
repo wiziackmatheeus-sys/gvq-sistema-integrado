@@ -2,9 +2,9 @@ import { atualizarUsuarios, limparCredenciais } from './usuarios-escritorio.js';
 import { compararNomes, aplicarBuscaTabela } from './buscas.js';
 import { filtrarCompras } from './filtros-compras.js';
 import { tiposDocumento, categoriaDocumento } from './documentos.js';
-import { codigoDaCompra } from './codigo-compra.js';
+import { codigoDaCompra, temNumeroCompra, reservarNumeroCompra, executarNumeracao } from './codigo-compra.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { collection, addDoc, query, orderBy, serverTimestamp, doc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { collection, addDoc, query, orderBy, serverTimestamp, doc, runTransaction, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
 import { criarControleSessao } from './sessao.js';
 import { etapasEscritorio, etapaAtual, podeMudarEtapa } from './etapas-escritorio.js';
@@ -16,6 +16,7 @@ let destinosGlobais = [];
 let romaneiosGlobais = [];
 let usuarioEscritorio = null;
 let cancelarHistorico = null;
+const numeracoesEmAndamento = new Set();
 const sessao = criarControleSessao(error => alert('Não foi possível carregar os dados: ' + error.message));
 
 const bancosBrasileiros = [
@@ -158,12 +159,35 @@ function iniciarSincronizacaoEmTempoReal() {
 
     const qRom = query(collection(db, 'romaneios'));
     sessao.observar(qRom, snapshot => {
-        romaneiosGlobais = snapshot.docs.map(d => ({ ...d.data(), id: d.id }))
+        const compras = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+        numerarComprasAntigas(compras);
+        romaneiosGlobais = compras
             .filter(r => !r.status || r.status === 'enviado_escritorio');
         atualizarOpcoesFiltros();
         renderizarCompras();
     });
 }
+// Atualiza somente o número público de registros antigos, sem mudar suas compras.
+async function numerarComprasAntigas(compras) {
+    for (const compra of compras) {
+        if (temNumeroCompra(compra) || numeracoesEmAndamento.has(compra.id)) continue;
+        if (!usuarioEscritorio || auth.currentUser?.uid !== usuarioEscritorio.uid) return;
+        numeracoesEmAndamento.add(compra.id);
+        try {
+            const contador = doc(db, 'contadores', 'compras');
+            await executarNumeracao(leitura => runTransaction(db, async transacao => {
+                const ref = doc(db, 'romaneios', compra.id);
+                const atual = await transacao.get(ref);
+                if (!atual.exists() || temNumeroCompra(atual.data())) return;
+                const numeroCompra = await reservarNumeroCompra(transacao, contador, atual.data(), compra.id, leitura);
+                transacao.update(ref, { numeroCompra });
+            }), async () => (await getDoc(contador)).data()?.valor || 0);
+        } catch {
+            document.getElementById('resultado-filtros').textContent = 'Não foi possível gerar os números das compras. Confira a conexão e a publicação das regras do banco.';
+        } finally { numeracoesEmAndamento.delete(compra.id); }
+    }
+}
+
 function atualizarOpcoesFiltros() {
     const listas = {
         fazenda: [...new Set(romaneiosGlobais.map(r => r.fazendaDestino).filter(Boolean))].map(nome => [nome, nome]),
@@ -205,7 +229,7 @@ function renderizarCompras() {
             <tr>
                 <td class="col-chk"><input type="checkbox" class="chk-export" value="${escapeHtml(r.id)}" aria-label="Selecionar registro"></td>
                 <td class="col-data"><strong>${escapeHtml(dataF)}</strong></td>
-                <td class="col-destaque"><span class="texto-cortado">${escapeHtml(r.pecuarista)}</span><span class="texto-cortado texto-suave codigo-compra">${escapeHtml(codigoDaCompra(r))}</span></td>
+                <td class="col-destaque"><span class="texto-cortado">${escapeHtml(r.pecuarista)}</span><span class="texto-cortado texto-suave codigo-compra">${escapeHtml(codigoDaCompra(r) || 'Gerando número...')}</span></td>
                 <td>${escapeHtml((r.comprador || '').split(' ')[0])}</td>
                 <td class="col-etapa-escritorio"></td>
                 <td class="col-num"><strong>${escapeHtml(r.cabecas)}</strong></td>
@@ -334,6 +358,7 @@ window.exportarExcelGeral = function() {
     if(selecionados.length === 0) return alert('Por favor, marque as caixinhas na primeira coluna da tabela para escolher quais compras exportar.');
 
     let romaneiosExport = romaneiosGlobais.filter(r => selecionados.includes(r.id));
+    if (romaneiosExport.some(r => !temNumeroCompra(r))) return alert('Aguarde a geração dos números das compras antes de exportar. Se não concluir, confira as regras do banco.');
 
     let csv = "Ordem de Compra;ID Registro;Data Compra;Data Pagamento;Originador;Pecuarista;UF Origem;Cidade Origem;Fazenda Destino;Cidade Destino;UF Destino;Raça;Sexo;Cabeças;Peso Total (kg);Peso Médio (kg);Preço Unitário;Unidade Preço;Valor Total Gado;Corretor;Tipo Comissão;Base Comissão;Total Comissão;Etapa Escritório;Responsável Escritório;Finalizado Por;Observações\n";
     
@@ -342,7 +367,7 @@ window.exportarExcelGeral = function() {
         let dataP = r.dataPagamento ? r.dataPagamento.split('-').reverse().join('/') : '-';
         let obs = r.observacoes ? r.observacoes.replace(/\n/g, " ") : "-";
         
-        csv += `${codigoDaCompra(r)};${r.id};${dataF};${dataP};${r.comprador};${r.pecuarista};${r.estado};${r.cidade};${r.fazendaDestino || '-'};${r.cidadeDestino || '-'};${r.ufDestino || '-'};${r.raca || '-'};${r.sexo || '-'};${r.cabecas};${r.pesoTotal};${r.pesoMedio || pesoMedio(r.cabecas, r.pesoTotal) || '-'};${r.precoUnitario || '-'};${r.unidadePreco || '-'};${r.valorTotalGado || '-'};${r.corretor || '-'};${r.tipoComissao || '-'};${r.valorComissao || '-'};${r.totalComissao || '-'};${etapasEscritorio[etapaAtual(r)]?.nome || '-'};${r.responsavelEscritorio || '-'};${r.finalizadoPor || '-'};${obs}\n`;
+        csv += `${codigoDaCompra(r)};${codigoDaCompra(r)};${dataF};${dataP};${r.comprador};${r.pecuarista};${r.estado};${r.cidade};${r.fazendaDestino || '-'};${r.cidadeDestino || '-'};${r.ufDestino || '-'};${r.raca || '-'};${r.sexo || '-'};${r.cabecas};${r.pesoTotal};${r.pesoMedio || pesoMedio(r.cabecas, r.pesoTotal) || '-'};${r.precoUnitario || '-'};${r.unidadePreco || '-'};${r.valorTotalGado || '-'};${r.corretor || '-'};${r.tipoComissao || '-'};${r.valorComissao || '-'};${r.totalComissao || '-'};${etapasEscritorio[etapaAtual(r)]?.nome || '-'};${r.responsavelEscritorio || '-'};${r.finalizadoPor || '-'};${obs}\n`;
     });
     baixarCSV(csv, "GVQ_Relatorio_Compras.csv");
 }
@@ -354,6 +379,7 @@ window.exportarExcelPesos = function() {
     if(selecionados.length === 0) return alert('Por favor, marque as caixinhas na primeira coluna da tabela para escolher de quais compras deseja exportar os pesos.');
 
     let romaneiosExport = romaneiosGlobais.filter(r => selecionados.includes(r.id));
+    if (romaneiosExport.some(r => !temNumeroCompra(r))) return alert('Aguarde a geração dos números das compras antes de exportar. Se não concluir, confira as regras do banco.');
 
     let csv = "Ordem de Compra;ID Romaneio;Data Compra;Pecuarista;Originador;Número do Animal;Peso (kg)\n";
     let temPesos = false;
@@ -362,7 +388,7 @@ window.exportarExcelPesos = function() {
         if(r.pesosIndividuais && r.pesosIndividuais.length > 0) {
             temPesos = true;
             r.pesosIndividuais.forEach((peso, index) => {
-                csv += `${codigoDaCompra(r)};${r.id};${dataF};${r.pecuarista};${r.comprador};Animal ${index + 1};${peso}\n`;
+                csv += `${codigoDaCompra(r)};${codigoDaCompra(r)};${dataF};${r.pecuarista};${r.comprador};Animal ${index + 1};${peso}\n`;
             });
         }
     });
@@ -462,3 +488,4 @@ function abrirHistoricoCompra(compra) {
 }
 
 ['pecuaristas','destinos'].forEach(tipo => document.getElementById('busca-' + tipo).addEventListener('input',event => aplicarBuscaTabela('tbody-' + tipo,event.target.value)));
+

@@ -1,3 +1,4 @@
+import { reservarNumeroCompra, temNumeroCompra, executarNumeracao } from '../js/codigo-compra.js';
 import { before, after, beforeEach, test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
@@ -6,7 +7,7 @@ setLogLevel('silent');
 let env;
 export const user = (nome, perfil, aprovado = true, campos = {}) => ({ nome, perfil, aprovado, login: nome.toLowerCase(), ...campos });
 export const pesagem = () => ({ estado: 'SP', cidade: 'Barretos', fazendaDestino: 'Fazenda', cidadeDestino: 'Ibitinga', ufDestino: 'SP', pecuarista: 'João', pecuaristaDocumento: '123', pecuaristaBanco: 'Banco', pecuaristaAgencia: '1', pecuaristaConta: '2', dataCompra: '2026-10-19', dataPagamento: '2026-10-23', cabecas: '2', pesoTotal: '650.50', pesoMedio: '325.25', tipoPesagem: 'individual', sexo: 'Macho', raca: 'F1 Angus', pesosIndividuais: [300, 350.5], observacoes: '', anexos: [], anexosLinks: [], anexosCaminhos: [], compradorUid: 'buyer1', comprador: 'Ana', pesadorUid: 'weigher1', pesador: 'Paulo', revisao: 1, status: 'aguardando_comprador', timestamp: serverTimestamp() });
-export const financeiro = (revisao = 1, evento = "validacao") => ({ ...pesagem(), precoUnitario: '300', unidadePreco: 'Por Arroba', valorTotalGado: 'R$ 6.505,00', tipoComissao: 'Nenhuma', valorComissao: '0', totalComissao: 'R$ 0,00', corretor: 'Sem corretor', pesagemId: 'p1', codigoCompra: 'OC-FAZENDA-202610-p1', revisaoValidada: revisao, etapaEscritorio: 'recebida', responsavelEscritorioUid: null, responsavelEscritorio: null, finalizadoPorUid: null, finalizadoPor: null, finalizadoEm: null, etapaAtualizadaPorUid: 'buyer1', etapaAtualizadaEm: serverTimestamp(), ultimoEventoEscritorio: evento, status: 'enviado_escritorio', validadoEm: serverTimestamp() });
+export const financeiro = (revisao = 1, evento = "validacao") => ({ ...pesagem(), precoUnitario: '300', unidadePreco: 'Por Arroba', valorTotalGado: 'R$ 6.505,00', tipoComissao: 'Nenhuma', valorComissao: '0', totalComissao: 'R$ 0,00', corretor: 'Sem corretor', pesagemId: 'p1', codigoCompra: 'OC-FAZENDA-202610-p1', numeroCompra: 1, revisaoValidada: revisao, etapaEscritorio: 'recebida', responsavelEscritorioUid: null, responsavelEscritorio: null, finalizadoPorUid: null, finalizadoPor: null, finalizadoEm: null, etapaAtualizadaPorUid: 'buyer1', etapaAtualizadaEm: serverTimestamp(), ultimoEventoEscritorio: evento, status: 'enviado_escritorio', validadoEm: serverTimestamp() });
 const db = uid => env.authenticatedContext(uid).firestore();
 before(async () => { env = await initializeTestEnvironment({ projectId: 'demo-gvq-tests', firestore: { rules: readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8') } }); });
 after(async () => { await env?.cleanup(); });
@@ -26,7 +27,9 @@ async function validar(revisao = 1) {
     return runTransaction(d, async t => {
         const origem = doc(d, 'pesagens', 'p1'); await t.get(origem);
         const evento = doc(collection(d, 'romaneios', 'p1', 'historicoEscritorio'));
-        t.set(doc(d, 'romaneios', 'p1'), financeiro(revisao, evento.id));
+        const anterior = revisao > 1 ? await t.get(doc(d, 'romaneios', 'p1')) : null;
+        const numeroCompra = await reservarNumeroCompra(t, doc(d, 'contadores', 'compras'), anterior?.data(), 'p1');
+        t.set(doc(d, 'romaneios', 'p1'), {...financeiro(revisao, evento.id), numeroCompra});
         t.set(evento, { tipo: 'validacao_originador', etapa: 'recebida', etapaAnterior: null, usuarioUid: 'buyer1', usuario: 'Ana', revisao, quando: serverTimestamp() });
         t.update(origem, { status: 'enviado_escritorio', validadoEm: serverTimestamp() });
     });
@@ -213,4 +216,39 @@ test('troca obrigatória bloqueia dados e não pode ser removida pelo cliente; s
     await assertSucceeds(getDoc(doc(env.authenticatedContext('buyer1',{auth_time:1001}).firestore(),'pesagens','p1')));
     await assertFails(setDoc(doc(db('office1'),'usuarios','outra-conta'),user('Outra','pesador',true)));
     await assertFails(setDoc(doc(db('office1'),'auditoriaContas','forjado'),{tipo:'criacao'}));
+});
+
+
+async function numerarAntiga(uid, id) {
+    const d = db(uid);
+    const contador = doc(d, 'contadores', 'compras');
+    return executarNumeracao(leitura => runTransaction(d, async t => {
+        const ref = doc(d, 'romaneios', id), anterior = await t.get(ref);
+        if (temNumeroCompra(anterior.data())) return anterior.data().numeroCompra;
+        const numeroCompra = await reservarNumeroCompra(t, contador, anterior.data(), id, leitura);
+        t.update(ref, {numeroCompra});
+        return numeroCompra;
+    }), async () => (await getDoc(contador)).data()?.valor || 0);
+}
+test('numeração legada usa contador atômico e mantém números distintos sob concorrência', async () => {
+    const resultados = await Promise.all([numerarAntiga('office1', 'legacy'), numerarAntiga('office2', 'other')]);
+    if (new Set(resultados).size !== 2 || Math.min(...resultados) !== 1 || Math.max(...resultados) !== 2) throw new Error('Numeração duplicada');
+    if (await numerarAntiga('office1', 'legacy') !== resultados[0]) throw new Error('Código mudou');
+    await assertFails(updateDoc(doc(db('office1'), 'romaneios', 'legacy'), {numeroCompra: 99}));
+    await assertFails(deleteDoc(doc(db('office1'), 'contadores', 'compras')));
+});
+test('ninguém reserva número isolado, pula sequência ou numera compra alheia', async () => {
+    await assertFails(setDoc(doc(db('office1'), 'contadores', 'compras'), {valor: 1, compraId: 'legacy'}));
+    await assertFails(updateDoc(doc(db('office1'), 'romaneios', 'legacy'), {numeroCompra: 1}));
+    await assertFails(numerarAntiga('buyer1', 'legacy'));
+    await assertFails(getDoc(doc(db('weigher1'), 'contadores', 'compras')));
+    const d = db('office1'), b = writeBatch(d);
+    b.set(doc(d, 'contadores', 'compras'), {valor: 8, compraId: 'legacy'});
+    b.update(doc(d, 'romaneios', 'legacy'), {numeroCompra: 8});
+    await assertFails(b.commit());
+    const c = writeBatch(d);
+    c.set(doc(d, 'contadores', 'compras'), {valor: 1, compraId: 'legacy'});
+    c.update(doc(d, 'romaneios', 'legacy'), {numeroCompra: 1});
+    c.update(doc(d, 'romaneios', 'other'), {numeroCompra: 1});
+    await assertFails(c.commit());
 });

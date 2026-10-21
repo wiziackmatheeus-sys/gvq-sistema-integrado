@@ -1,7 +1,7 @@
 import { compararNomes, buscarCompras, sugerirLogin } from '../js/buscas.js';
 import { filtrarCompras } from '../js/filtros-compras.js';
 import { categoriaDocumento, nomeDocumento, tiposDocumento } from '../js/documentos.js';
-import { gerarCodigoCompra, codigoDaCompra } from '../js/codigo-compra.js';
+import { gerarCodigoCompra, codigoDaCompra, reservarNumeroCompra, temNumeroCompra, executarNumeracao } from '../js/codigo-compra.js';
 import { podeMudarEtapa, etapaAtual } from '../js/etapas-escritorio.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -68,23 +68,25 @@ test('etapas do escritório seguem Recebida, Em andamento, Finalizada e reabertu
     assert.equal(podeMudarEtapa('finalizada', 'recebida'), false);
 });
 
-test('ordem de compra usa fazenda de destino, mês da compra e ID completo', () => {
+test('código técnico legado é preservado e número público usa somente dígitos', () => {
     const compra = { ...base, fazendaDestino: 'Fazenda São José' };
     assert.equal(gerarCodigoCompra(compra, 'AbCd1234EFgh5678IjKl'), 'OC-SAO-JOSE-202610-AbCd1234EFgh5678IjKl');
     assert.notEqual(gerarCodigoCompra(compra, 'a'), gerarCodigoCompra(compra, 'b'));
     assert.notEqual(gerarCodigoCompra(compra, 'a'), gerarCodigoCompra({ ...compra, dataCompra: '2026-11-01' }, 'a'));
     assert.notEqual(gerarCodigoCompra(compra, 'a'), gerarCodigoCompra({ ...compra, fazendaDestino: 'Outra' }, 'a'));
-    assert.equal(codigoDaCompra({ ...compra, id: 'a', codigoCompra: 'OC-FIXO-202609-a' }), 'OC-FIXO-202609-a');
-    assert.equal(codigoDaCompra({ id: 'legado' }), 'OC-FAZENDA-SEM-DATA-legado');
+    assert.equal(codigoDaCompra({ ...compra, numeroCompra: 1, codigoCompra: 'OC-FIXO-202609-a' }), '000001');
+    assert.equal(codigoDaCompra({ id: 'legado' }), '');
+    assert.equal(temNumeroCompra({numeroCompra: -1}), false);
 });
 
 test('filtros de compras combinam código, fazenda, originador, etapa e mês com compatibilidade antiga', () => {
-    const compras = [{ ...base, id: 'a', codigoCompra: 'OC-SAO-JOSE-202610-a', compradorUid: 'u1', comprador: 'Ana', etapaEscritorio: 'finalizada' },
+    const compras = [{ ...base, id: 'a', numeroCompra: 12, codigoCompra: 'OC-SAO-JOSE-202610-a', compradorUid: 'u1', comprador: 'Ana', etapaEscritorio: 'finalizada' },
         { ...base, id: 'b', comprador: 'Antigo', dataCompra: '2026-11-02' }];
-    assert.equal(filtrarCompras(compras, { codigo: 'são-josé', fazenda: base.fazendaDestino, originador: 'u1', etapa: 'finalizada', mes: '2026-10' })[0].id, 'a');
+    assert.equal(filtrarCompras(compras, { codigo: '000012', fazenda: base.fazendaDestino, originador: 'u1', etapa: 'finalizada', mes: '2026-10' })[0].id, 'a');
     assert.deepEqual(filtrarCompras(compras, { mes: '2026-12' }), []);
     assert.equal(filtrarCompras(compras, { originador: 'Antigo', etapa: 'recebida', mes: '2026-11' })[0].id, 'b');
     assert.equal(filtrarCompras(compras).length, 2);
+    assert.equal(buscarCompras(compras, {texto:'000012'})[0].id, 'a');
     assert.equal(filtrarCompras(compras,{texto:'pecuarista barretos'}).length,2);
 });
 test('documentos possuem oito categorias opcionais e antigos ficam em Outros', () => {
@@ -105,3 +107,29 @@ test('buscas ignoram acentos, combinam termos e filtros; nomes e raças seguem o
     assert.equal(sugerirLogin(' João da Silva '),'joao.silva');
 });
 
+
+
+test('número público é sequencial, reutilizado na revalidação e rejeita contador inválido', async () => {
+    const escritas = [];
+    const tx = { get: async () => ({ exists: () => true, data: () => ({valor: 8}) }), set: (ref, dados) => escritas.push(dados) };
+    assert.equal(await reservarNumeroCompra(tx, {}, null, 'compra'), 9);
+    assert.deepEqual(escritas, [{valor: 9, compraId: 'compra'}]);
+    assert.equal(await reservarNumeroCompra(tx, {}, {numeroCompra: 3}, 'compra'), 3);
+    assert.equal(escritas.length, 1);
+    tx.get = async () => ({ exists: () => true, data: () => ({valor: 999999999}) });
+    await assert.rejects(reservarNumeroCompra(tx, {}, null, 'compra'), /contador/);
+});
+
+test('disputa por número só repete a transação quando o contador realmente avançou', async () => {
+    let tentativas = 0;
+    const erro = Object.assign(new Error('Negado'), {code: 'permission-denied'});
+    assert.equal(await executarNumeracao(async leitura => {
+        tentativas++; leitura.valor = 0;
+        if (tentativas === 1) throw erro;
+        return 2;
+    }, async () => 1), 2);
+    assert.equal(tentativas, 2);
+    tentativas = 0;
+    await assert.rejects(executarNumeracao(async leitura => { tentativas++; leitura.valor = 0; throw erro; }, async () => 0), /Negado/);
+    assert.equal(tentativas, 1);
+});

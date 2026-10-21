@@ -48,11 +48,7 @@ Esta alteração não muda as regras de acesso nem cria exigência de documentos
 
 ## Identificação automática da compra
 
-Na primeira validação pelo originador, o app gera `codigoCompra` no formato `OC-FAZENDA-AAAAMM-ID`: nome da fazenda de destino sem acentos/espaços (até 24 caracteres), ano/mês da data da compra e ID completo do registro. Exemplo: `OC-SAO-JOSE-202610-AbCd1234EFgh5678IjKl`. O ID completo distingue compras simultâneas da mesma fazenda/mês sem depender de contador. O mês não depende do relógio ou fuso de quem abre a tela.
-
-O código é automático, sem campo para edição. Fica abaixo do pecuarista na tabela do escritório, com o texto completo ao passar o mouse, e no título do histórico. A coluna **Ordem de Compra** é incluída nas duas exportações CSV compatíveis com Excel (compras e pesos); o ID interno também é mantido. Revalidações preservam o código original, mesmo se forem corrigidos o destino ou a data. As regras impedem alterar um código já gravado.
-
-Compras antigas sem código recebem uma identificação calculada ao visualizar/exportar, sem migração em massa. Para essas compras, o código é calculado com seus dados atuais; registros sem fazenda ou data usam `FAZENDA` e `SEM-DATA`. Na próxima revalidação de um registro antigo, o código é gravado. É necessário publicar as novas regras Firestore junto com a atualização do app.
+O código público passa a ser numérico e sequencial (por exemplo, **000001**). Aparece na tabela, no histórico e nas duas colunas de identificação das exportações de compras e pesos. O ID técnico fica interno. A numeração permanece igual nas revalidações. Detalhes de implantação e tratamento das compras antigas estão em **Código numérico da compra**, ao final deste documento.
 
 ## Etapas do escritório
 
@@ -123,3 +119,10 @@ A tela informa quando o salvamento terminou ou falhou. Não é sincronização e
 ### Progresso e falhas de envio
 
 Os documentos incluem **Ordem de embarque / checklist**, opcional como os demais. O botão identifica a conferência do cadastro, o progresso de cada anexo e a confirmação no banco. Uploads sem progresso por 45 segundos são cancelados; erros de permissão, configuração ou cota do Storage são apresentados sem limpar o preenchimento. Consultas ao servidor têm prazo de 30 segundos e a confirmação da gravação, 45 segundos. Se a gravação não for confirmada nesse prazo, ela ainda pode terminar depois: seus anexos são preservados e o mesmo ID da compra é consultado no servidor antes de uma nova tentativa.
+
+
+## Código numérico da compra
+
+O número público é sequencial, exibido como **000001, 000002, 000003** no escritório, na busca e nas duas colunas de identificação das exportações. O identificador técnico do Firestore permanece interno, preservando anexos e histórico. O número é atribuído na primeira validação do originador e mantido nas revalidações. Compras antigas ainda sem número recebem um ao abrir o painel do escritório; a exportação aguarda a conclusão.
+
+A sequência usa uma transação com o documento `contadores/compras`, vinculada à gravação da compra. As regras impedem reservas isoladas, alterações de números existentes e saltos na sequência. Não excluir ou reiniciar o contador em uma base com compras numeradas. Antes de disponibilizar esta versão, publicar as novas regras: `npx firebase-tools deploy --only firestore:rules --project gvq-sistema-compras`. A atualização do GitHub Pages, sozinha, não publica regras. O campo legado `codigoCompra` é mantido para compatibilidade técnica, sem aparecer nas telas ou no Excel.
