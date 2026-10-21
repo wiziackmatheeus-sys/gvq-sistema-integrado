@@ -1,5 +1,6 @@
 export const tiposDocumento = [
     ['nota_fiscal', 'Nota fiscal'], ['gta', 'GTA'], ['romaneio_manual', 'Romaneio manual'],
+    ['ordem_embarque_checklist', 'Ordem de embarque / checklist'],
     ['foto_gado', 'Foto do gado'], ['video_gado', 'Vídeo do gado'], ['foto_carreta', 'Foto da carreta'], ['outros', 'Outros']
 ];
 export function categoriaDocumento(anexo) {
@@ -26,3 +27,4 @@ export function atualizarSituacaoDocumentos(containerId, anexos) {
         el.textContent = total ? `${total} arquivo(s)` : 'Não anexado';
     });
 }
+

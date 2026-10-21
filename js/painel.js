@@ -1,9 +1,10 @@
+import { comPrazo } from './controle-envio.js';
 import { criarRascunhoLocal } from './rascunho-local.js';
 import { compararNomes, normalizarTexto, buscarCompras } from './buscas.js';
 import { montarCamposDocumentos, atualizarSituacaoDocumentos, nomeDocumento } from './documentos.js';
 import { gerarCodigoCompra } from './codigo-compra.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, runTransaction, getDoc, getDocs, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, runTransaction, getDoc, getDocsFromServer, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
 import { enviarAnexos, limparUploads, unirAnexos } from './anexos.js';
 import { criarControleSessao } from './sessao.js';
@@ -23,6 +24,10 @@ let rascunho = null;
 let envioEmAndamento = false;
 let rascunhoPronto = false;
 let bloqueioRascunho = false;
+let envioPesadorId = null;
+const confirmarGravacao = operacao => comPrazo(operacao,
+    'Não foi possível confirmar o envio ao banco. O preenchimento foi preservado. Confira a conexão e o histórico antes de tentar novamente.',
+    { ms: 45000, resultadoIncerto: true });
 const formulario = document.getElementById('form-romaneio');
 
 function informarRascunho(texto, erro = false) {
@@ -455,6 +460,7 @@ function lerFormulario() {
 }
 
 function limparFormulario() {
+    envioPesadorId = null;
     document.getElementById('form-romaneio').reset();
     pesosAdicionadosGlobais = [];
     arquivosFilaGlobais = [];
@@ -477,7 +483,8 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
     formulario.inert = true;
     document.getElementById('grid-inputs').inert = true;
     const btn = document.getElementById('btn-registrar');
-    btn.innerText = 'Salvando registro no banco...'; btn.disabled = true;
+    const informarEnvio = texto => { btn.innerText = texto; };
+    informarEnvio('Conferindo dados da compra...'); btn.disabled = true;
     let enviados = [];
     let gravado = false;
     try {
@@ -490,28 +497,32 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
         }
         if (ehPesador) {
             // Conferir novamente o vínculo antes de enviar; não confiar no perfil carregado ao entrar.
-            const perfil = await getDoc(doc(db, 'usuarios', usuarioAtual.uid));
+            informarEnvio('Conferindo originador responsável...');
+            const perfil = await comPrazo(getDoc(doc(db, 'usuarios', usuarioAtual.uid)), 'O banco não respondeu ao conferir seu cadastro. Confira a conexão e tente novamente.');
             const responsavel = perfil.data();
             if (!responsavel?.aprovado || !responsavel.compradorUid) throw new Error('Aguarde o escritório aprovar seu cadastro e designar o originador.');
             // O mesmo ID é reutilizado em uma repetição após falha de conexão.
-            const origem = rascunho ? doc(db, 'pesagens', rascunho.id) : doc(collection(db, 'pesagens'));
-            const anteriores = await getDocs(query(collection(db, 'pesagens'), where('pesadorUid', '==', usuarioAtual.uid), where('__name__', '==', origem.id)));
+            const origem = rascunho ? doc(db, 'pesagens', rascunho.id) : doc(db, 'pesagens', envioPesadorId ||= doc(collection(db, 'pesagens')).id);
+            informarEnvio('Conferindo envio anterior...');
+            const anteriores = await comPrazo(getDocsFromServer(query(collection(db, 'pesagens'), where('pesadorUid', '==', usuarioAtual.uid), where('__name__', '==', origem.id))), 'O banco não respondeu ao conferir o envio anterior. Tente novamente quando a conexão voltar.');
+            if (anteriores.docs.some(d => d.metadata?.hasPendingWrites)) throw Object.assign(new Error('Existe um envio aguardando confirmação. Confira a conexão e o histórico antes de tentar novamente.'), { resultadoIncerto: true });
             if (!anteriores.empty) {
                 if (!confirm('Esta pesagem já foi enviada. Consulte o histórico. Deseja descartar este rascunho e iniciar outro preenchimento?')) return;
                 gravado = true;
-                if (rascunho) await rascunho.apagar();
+                if (rascunho) await comPrazo(rascunho.apagar(), 'Não foi possível limpar o rascunho neste aparelho.', { ms: 5000 });
                 limparFormulario();
                 alert('Esta pesagem já foi enviada. Confira o histórico.');
                 return;
             }
-            if (rascunhoPronto) { try { await rascunho.salvar(); } catch { /* O envio ao servidor pode continuar. */ } }
-            enviados = await enviarAnexos(arquivosFilaGlobais, { uid: usuarioAtual.uid, pesagemId: origem.id });
-            await setDoc(origem, {
+            if (rascunhoPronto) { try { await comPrazo(rascunho.salvar(), 'Rascunho local sem resposta.', { ms: 5000 }); } catch { /* O envio ao servidor pode continuar. */ } }
+            enviados = await enviarAnexos(arquivosFilaGlobais, { uid: usuarioAtual.uid, pesagemId: origem.id, aoProgresso: informarEnvio });
+            informarEnvio('Confirmando compra no banco...');
+            await confirmarGravacao(setDoc(origem, {
                 ...dadosPesagem(dados), anexosLinks: enviados, anexosCaminhos: enviados.map(a => a.caminho),
                 compradorUid: responsavel.compradorUid, comprador: responsavel.comprador,
                 pesadorUid: usuarioAtual.uid, pesador: usuarioAtual.nome,
                 status: 'aguardando_comprador', revisao: 1, timestamp: serverTimestamp()
-            });
+            }));
             gravado = true;
             usuarioAtual = { ...usuarioAtual, ...responsavel };
             alert('Pesagem enviada ao originador responsável!');
@@ -521,8 +532,9 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
             const origem = doc(db, 'pesagens', pesagemEmConferencia);
             const destino = doc(db, 'romaneios', pesagemEmConferencia);
             const evento = doc(collection(db, 'romaneios', origem.id, 'historicoEscritorio'));
-            enviados = await enviarAnexos(arquivosFilaGlobais, { uid: usuarioAtual.uid, pesagemId: origem.id, financeiro: true });
-            await runTransaction(db, async transacao => {
+            enviados = await enviarAnexos(arquivosFilaGlobais, { uid: usuarioAtual.uid, pesagemId: origem.id, financeiro: true, aoProgresso: informarEnvio });
+            informarEnvio('Confirmando validação no banco...');
+            await confirmarGravacao(runTransaction(db, async transacao => {
                 const snap = await transacao.get(origem);
                 if (!snap.exists() || snap.data().compradorUid !== usuarioAtual.uid || snap.data().status !== 'aguardando_comprador') {
                     throw new Error('Esta compra já foi validada ou não pertence a você.');
@@ -546,19 +558,19 @@ document.getElementById('form-romaneio').addEventListener('submit', async (e) =>
                 transacao.set(evento, { tipo: 'validacao_originador', etapa: 'recebida', etapaAnterior: null,
                     usuarioUid: usuarioAtual.uid, usuario: usuarioAtual.nome, revisao: pesagem.revisao || 1, quando: serverTimestamp() });
                 transacao.update(origem, { status: 'enviado_escritorio', validadoEm: serverTimestamp() });
-            });
+            }));
             gravado = true;
             alert('Compra validada e enviada ao escritório!');
         }
         if (ehPesador && rascunho) {
-            try { await rascunho.apagar(); }
+            try { await comPrazo(rascunho.apagar(), 'Rascunho local sem resposta.', { ms: 5000 }); }
             catch { informarRascunho('Compra enviada. Não foi possível limpar o rascunho; reabra a página antes de iniciar outra compra.', true); rascunhoPronto = false; bloqueioRascunho = true; }
         }
         limparFormulario();
         if (!ehPesador) window.mostrarPendentes();
         window.scrollTo(0, 0);
     } catch(error) {
-        if (!gravado) await limparUploads(enviados);
+        if (!gravado && !error.resultadoIncerto) await limparUploads(enviados);
         alert('Erro ao salvar: ' + error.message);
     } finally {
         btn.innerText = textoEnviar; btn.disabled = bloqueioRascunho; envioEmAndamento = false;
@@ -734,8 +746,9 @@ if (ehPesador) document.getElementById('form-complementos').addEventListener('su
     let enviados = []; let gravado = false;
     try {
         const id = complementoId;
-        enviados = await enviarAnexos(arquivos, { uid: usuarioAtual.uid, pesagemId: id });
-        await runTransaction(db, async transacao => {
+        enviados = await enviarAnexos(arquivos, { uid: usuarioAtual.uid, pesagemId: id, aoProgresso: texto => { btn.textContent = texto; } });
+        btn.textContent = 'Confirmando documentos no banco...';
+        await confirmarGravacao(runTransaction(db, async transacao => {
             const origem = doc(db, 'pesagens', id);
             const snap = await transacao.get(origem);
             if (!snap.exists() || snap.data().pesadorUid !== usuarioAtual.uid) throw new Error('Pesagem indisponível.');
@@ -746,14 +759,15 @@ if (ehPesador) document.getElementById('form-complementos').addEventListener('su
                 revisao: (p.revisao || 1) + 1, status: 'aguardando_comprador', complementadoEm: serverTimestamp()
             });
             if (p.validadoEm) transacao.update(doc(db, 'romaneios', id), { status: 'aguardando_revalidacao', revalidacaoSolicitadaEm: serverTimestamp() });
-        });
+        }));
         gravado = true;
         alert('Documentos enviados. A compra voltou para validação do originador.');
         complementoId = null; window.mostrarTelaHistorico();
-    } catch (error) { if (!gravado) await limparUploads(enviados); alert('Erro ao complementar: ' + error.message); }
+    } catch (error) { if (!gravado && !error.resultadoIncerto) await limparUploads(enviados); alert('Erro ao complementar: ' + error.message); }
     finally { btn.disabled = false; btn.textContent = 'Enviar para revalidação'; }
 });
 
 montarCamposDocumentos('campos-documentos', 'input_arquivos', window.adicionarAnexosFila);
 if (ehPesador) montarCamposDocumentos('campos-complementos', 'input_complementos', window.listarComplementos);
+
 

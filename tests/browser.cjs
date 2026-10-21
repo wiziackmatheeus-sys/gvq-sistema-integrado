@@ -27,10 +27,11 @@ export function serverTimestamp(){return 'SERVER_TIME'}
 function snap(name,id){const data=h().data[name]?.[id];return {id,exists:()=>!!data,data:()=>structuredClone(data)}}
 function emit(ref,callback){const docs=Object.entries(h().data[ref.name]||{}).filter(([id,d])=>(ref.filters||[]).every(f=>!f.field||(f.op==='in'?f.value.includes(d[f.field]):(f.field==='__name__'?id:d[f.field])===f.value))).map(([id])=>snap(ref.name,id));callback({docs,empty:!docs.length,forEach:f=>docs.forEach(f)})}
 function notify(){for(const {ref,callback,ativo} of listeners)if(ativo)emit(ref,callback)}
+export async function getDocsFromServer(ref){if(h().hangRead)return new Promise(()=>{});return getDocs(ref)}
 export async function getDocs(ref){let result;emit(ref,s=>result=s);return result}
 export async function getDoc(ref){h().reads.push(ref);return snap(ref.name,ref.id)}
 export function onSnapshot(ref,callback,error){h().reads.push(ref);const l={ref,callback,error,ativo:true};listeners.push(l);emit(ref,callback);return ()=>{l.ativo=false}}
-export async function setDoc(ref,data){h().writes.push({name:ref.name,id:ref.id,data});h().data[ref.name]??={};h().data[ref.name][ref.id]=structuredClone(data);notify()}
+export async function setDoc(ref,data){if(h().hangWrite)await new Promise(resolve=>h().releaseWrite=resolve);h().writes.push({name:ref.name,id:ref.id,data});h().data[ref.name]??={};h().data[ref.name][ref.id]=structuredClone(data);notify()}
 export async function addDoc(ref,data){return setDoc({...ref,id:'new-id'},data)}
 export async function runTransaction(db,callback){
  const staged=[];
@@ -41,6 +42,15 @@ export async function signInWithEmailAndPassword(){return {user:{uid:h().uid}}}
 export async function createUserWithEmailAndPassword(){return {user:{uid:h().uid}}}
 export function ref(storage,path){return {path}}
 export async function uploadBytes(ref,file){if(h().failUpload)throw new Error('Storage indisponível');h().uploads.push({path:ref.path,name:file.name,size:file.size})}
+export function setMaxUploadRetryTime(){}
+export function setMaxOperationRetryTime(){}
+export function uploadBytesResumable(ref,file){
+ const tarefa={snapshot:{bytesTransferred:0,totalBytes:file.size},cancel(){h().cancelledUploads=(h().cancelledUploads||0)+1;return true},on(event,progress,error,complete){
+  let active=true;queueMicrotask(async()=>{if(!active)return;progress(tarefa.snapshot);if(h().hangUpload)return;
+   try{await uploadBytes(ref,file);if(!active)return;tarefa.snapshot.bytesTransferred=file.size;progress(tarefa.snapshot);complete()}
+   catch(e){if(active)error(e)}});return ()=>{active=false};
+ }};return tarefa;
+}
 export async function getDownloadURL(ref){return 'https://files.example.test/'+ref.path}
 export async function deleteObject(ref){h().deleted.push(ref.path)}
 `;
@@ -76,7 +86,7 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  }
  // A página pública permite apenas entrar; contas anteriores pendentes continuam bloqueadas.
  const {page:signup,errors:se}=await pageFor('new-user','index.html');
- assert.equal(await signup.locator('#form-cadastro').count(),0);assert.equal(await signup.getByRole('button',{name:'Nova conta',exact:true}).count(),0);assert.deepEqual(se,[]);
+ assert.equal(await signup.getByText('Para obter acesso, solicite seu cadastro ao escritório.',{exact:true}).count(),0);assert.equal(await signup.locator('#form-cadastro').count(),0);assert.equal(await signup.getByRole('button',{name:'Nova conta',exact:true}).count(),0);assert.deepEqual(se,[]);
  const {page:waiting}=await pageFor('waiting','pages/pesador.html');await waiting.waitForURL('**/index.html');
  console.log('PASS: cadastro público removido; contas pendentes anteriores permanecem bloqueadas.');
  // Escritório aprova e vincula, com compatibilidade para contas antigas de comprador.
@@ -186,15 +196,35 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  console.log('PASS: pesos individuais e arquivo inicial com link persistido.');
  // Documentos de tipos diferentes e arquivos com o mesmo nome conservam suas categorias.
  const {page:docs,errors:de}=await pageFor('weigher1','pages/pesador.html');await fillOperacional(docs);
- for(const [tipo,mimeType] of [['nota_fiscal','application/pdf'],['foto_gado','image/jpeg'],['video_gado','video/mp4']]){
+ for(const [tipo,mimeType] of [['nota_fiscal','application/pdf'],['ordem_embarque_checklist','application/pdf'],['foto_gado','image/jpeg'],['video_gado','video/mp4']]){
   await docs.locator('#input_arquivos_'+tipo).setInputFiles({name:'mesmo-nome',mimeType,buffer:Buffer.from('arquivo teste')});
  }
- assert.equal(await docs.locator('#lista-arquivos-ui .item-anexo').count(),3);
+ assert.equal(await docs.locator('#lista-arquivos-ui .item-anexo').count(),4);
  await docs.locator('#btn-registrar').click();await docs.waitForTimeout(40);
- assert.deepEqual(await docs.evaluate(()=>window.__mock.writes[0].data.anexosLinks.map(a=>a.categoria)),['nota_fiscal','foto_gado','video_gado']);
+ assert.deepEqual(await docs.evaluate(()=>window.__mock.writes[0].data.anexosLinks.map(a=>a.categoria)),['nota_fiscal','ordem_embarque_checklist','foto_gado','video_gado']);
  assert.deepEqual(de,[]);await docs.close();
  console.log('PASS: nota fiscal, foto e vídeo opcionais conservam categorias e nomes repetidos.');
 
+ // Storage que não responde é cancelado, libera o botão e conserva os dados.
+ const {page:stalled,alerts:stallAlerts}=await pageFor('weigher1','pages/pesador.html');await fillOperacional(stalled);
+ await stalled.locator('#input_arquivos_ordem_embarque_checklist').setInputFiles({name:'checklist.pdf',mimeType:'application/pdf',buffer:Buffer.from('checklist')});
+ await stalled.clock.install();await stalled.evaluate(()=>window.__mock.hangUpload=true);await stalled.locator('#btn-registrar').click();
+ await stalled.waitForFunction(()=>document.getElementById('btn-registrar').textContent.includes('Enviando anexo'));
+ await stalled.clock.fastForward(45001);await stalled.waitForFunction(()=>!document.getElementById('btn-registrar').disabled);
+ assert.equal(await stalled.evaluate(()=>window.__mock.writes.length),0);assert.equal(await stalled.evaluate(()=>window.__mock.cancelledUploads),1);
+ assert.equal(await stalled.locator('#rom_cabecas').inputValue(),'2');assert.ok(stallAlerts.some(a=>a.includes('não respondeu a tempo')));await stalled.close();
+ // Gravação sem confirmação pode terminar depois: não apagar seus anexos nem duplicar a compra.
+ const {page:uncertain,alerts:uncertainAlerts}=await pageFor('weigher1','pages/pesador.html');await fillOperacional(uncertain);
+ await uncertain.locator('#input_arquivos_ordem_embarque_checklist').setInputFiles({name:'checklist.pdf',mimeType:'application/pdf',buffer:Buffer.from('checklist')});
+ await uncertain.clock.install();await uncertain.evaluate(()=>window.__mock.hangWrite=true);await uncertain.locator('#btn-registrar').click();
+ await uncertain.waitForFunction(()=>document.getElementById('btn-registrar').textContent.includes('Confirmando compra no banco'));
+ await uncertain.clock.fastForward(45001);await uncertain.waitForFunction(()=>!document.getElementById('btn-registrar').disabled);
+ assert.ok(uncertainAlerts.some(a=>a.includes('Não foi possível confirmar')));assert.equal(await uncertain.evaluate(()=>window.__mock.deleted.length),0);
+ assert.equal(await uncertain.locator('#rom_cabecas').inputValue(),'2');
+ await uncertain.evaluate(()=>{window.__mock.hangWrite=false;window.__mock.releaseWrite()});await uncertain.waitForFunction(()=>window.__mock.writes.length===1);
+ await uncertain.locator('#btn-registrar').click();await uncertain.waitForFunction(()=>!document.getElementById('btn-registrar').disabled);
+ assert.equal(await uncertain.evaluate(()=>window.__mock.writes.length),1);assert.equal(await uncertain.locator('#rom_cabecas').inputValue(),'');await uncertain.close();
+ console.log('PASS: upload travado é cancelado e gravação tardia preserva anexos sem duplicar a compra.');
  // Originador revisa um novo registro gerado pela tela do pesador.
  let data=await w.evaluate(()=>window.__mock.data);data.pesagens={p1:{...data.pesagens[writes[0].id]}};
  const {page:b,errors:be}=await pageFor('buyer1','pages/painel.html',1280,data);
@@ -382,7 +412,7 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  // Obrigatoriedade: anexos e observações são opcionais; raça extra só quando Outra.
  const {page:required}=await pageFor('weigher1','pages/pesador.html');
  assert.deepEqual(await required.locator('#form-romaneio input:not([type=file]):not(#rom_raca_outra),#form-romaneio select').evaluateAll(els=>els.filter(e=>!e.required).map(e=>e.id)),[]);
- assert.equal(await required.locator('#campos-documentos input[type=file]').count(),7);
+ assert.equal(await required.locator('#campos-documentos input[type=file]').count(),8);
  assert.equal(await required.locator('#campos-documentos input[type=file]').evaluateAll(els=>els.some(e=>e.required)),false);
  assert.equal(await required.locator('#input_arquivos').evaluate(e=>e.required),false);assert.equal(await required.locator('#rom_obs').evaluate(e=>e.required),false);
  for(const width of [1280,375]){
@@ -405,4 +435,5 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  }
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});
+
 
