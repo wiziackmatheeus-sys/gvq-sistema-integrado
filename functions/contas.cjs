@@ -86,7 +86,7 @@ function criarServicoContas({ auth, db, FieldValue, erro, verificarSenha }) {
         if (!uid) falhar('unauthenticated', 'Entre novamente com a senha temporária.');
         const atual = typeof dados.senhaAtual === 'string' ? dados.senhaAtual : '';
         const nova = typeof dados.novaSenha === 'string' ? dados.novaSenha : '';
-        if (!atual || atual.length > 128 || nova.length < 8 || nova.length > 128 || nova === atual) falhar('invalid-argument', 'A nova senha deve ter entre 8 e 128 caracteres e ser diferente da atual.');
+        if (!atual || atual.length > 128 || nova.length < 6 || nova.length > 128 || nova === atual) falhar('invalid-argument', 'A nova senha deve ter entre 6 e 128 caracteres e ser diferente da atual.');
         return comTrava(uid, async () => {
             const u = await perfil(uid);
             if (u.trocaSenhaObrigatoria !== true) falhar('failed-precondition', 'Não há troca de senha pendente.');
