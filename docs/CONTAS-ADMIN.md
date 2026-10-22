@@ -13,7 +13,7 @@ No cadastro direto pelo escritório, informar nome, usuário e perfil. Nos dois 
 
 A senha temporária é mostrada ao escritório após a operação para entrega à pessoa. Ela é removida da tela ao fechar o aviso, navegar ou sair, e não é salva no Firestore, auditoria ou localStorage. Se fechar antes de copiar, usar **Redefinir senha** para emitir outra; não é possível consultar a senha atual. Não há envio automático por e-mail ou mensagem.
 
-No primeiro acesso, o usuário é direcionado para **Defina sua nova senha** e informa a senha temporária atual, uma senha nova de 8 a 128 caracteres e a confirmação. Depois entra novamente com a senha nova. A troca obrigatória também vale para acesso direto às páginas; Firestore e Storage bloqueiam o uso operacional enquanto estiver pendente. O próprio cliente não pode remover essa exigência.
+No primeiro acesso, o usuário é direcionado para **Defina sua nova senha** e informa a senha temporária atual, uma senha nova de 6 a 128 caracteres e a confirmação. Depois entra novamente com a senha nova. A troca obrigatória também vale para acesso direto às páginas; Firestore e Storage bloqueiam o uso operacional enquanto estiver pendente. O próprio cliente não pode remover essa exigência.
 
 **Redefinir senha** mantém o UID, o cadastro, o originador responsável e os documentos de compras. A senha anterior para de funcionar, as sessões anteriores são revogadas e a troca obrigatória volta a ser exigida. Outra conta de escritório pode redefinir a senha de um escritório; o sistema impede redefinir a própria senha por esse botão para evitar bloquear a sessão que receberia a senha temporária. Não apagar e recriar a conta. Contas antigas sem os novos campos continuam entrando normalmente até uma redefinição.
 

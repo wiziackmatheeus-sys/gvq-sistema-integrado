@@ -67,13 +67,14 @@ test('redefinição, primeiro acesso e troca preservam UID, vínculo e históric
     assert.equal((await entrar('weigher','Original-123')).ok,false);
     const temporario=await entrar('weigher',redefinido.senhaTemporaria); assert.equal(temporario.localId,'weigher');
     assert.equal((await db.doc('usuarios/weigher').get()).data().trocaSenhaObrigatoria,true);
-    assert.ok((await chamar('trocarSenhaInicial',tokenAntigo,{senhaAtual:'Original-123',novaSenha:'Definitiva-456'})).error);
+    assert.ok((await chamar('trocarSenhaInicial',tokenAntigo,{senhaAtual:'Original-123',novaSenha:'Nova12'})).error);
     assert.ok((await chamar('trocarSenhaInicial',temporario.idToken,{senhaAtual:redefinido.senhaTemporaria,novaSenha:redefinido.senhaTemporaria})).error);
-    assert.ok((await chamar('trocarSenhaInicial',temporario.idToken,{senhaAtual:'errada',novaSenha:'Definitiva-456'})).error);
-    const trocado=await chamar('trocarSenhaInicial',temporario.idToken,{senhaAtual:redefinido.senhaTemporaria,novaSenha:'Definitiva-456'});
+    assert.ok((await chamar('trocarSenhaInicial',temporario.idToken,{senhaAtual:'errada',novaSenha:'Nova12'})).error);
+    assert.equal((await chamar('trocarSenhaInicial',temporario.idToken,{senhaAtual:redefinido.senhaTemporaria,novaSenha:'12345'})).error.status,'INVALID_ARGUMENT');
+    const trocado=await chamar('trocarSenhaInicial',temporario.idToken,{senhaAtual:redefinido.senhaTemporaria,novaSenha:'Nova12'});
     assert.ok(trocado.result,JSON.stringify(trocado));
     assert.equal((await entrar('weigher',redefinido.senhaTemporaria)).ok,false);
-    const definitivo=await entrar('weigher','Definitiva-456'); assert.equal(definitivo.localId,'weigher');
+    const definitivo=await entrar('weigher','Nova12'); assert.equal(definitivo.localId,'weigher');
     const perfil=(await db.doc('usuarios/weigher').get()).data(); assert.equal(perfil.trocaSenhaObrigatoria,false); assert.equal(perfil.compradorUid,'buyer');
     assert.ok(definitivo.idToken);
     assert.deepEqual((await db.doc('romaneios/historico').get()).data(),{pesadorUid:'weigher',compradorUid:'buyer',valorTotalGado:'R$ 100,00'});

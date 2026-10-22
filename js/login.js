@@ -79,8 +79,8 @@ document.getElementById('form-cadastro').addEventListener('submit', async e => {
     if (!login) { alert('Informe o nome e o sobrenome completos para gerar o usuário (até 60 caracteres).'); return; }
     const perfil = campo('perfil').value, senha = campo('senha').value;
     if (nome.length < 3 || nome.length > 100 || !/^[a-z0-9][a-z0-9._-]{2,59}$/.test(login)
-        || !['originador', 'pesador', 'escritorio'].includes(perfil) || senha.length < 8 || senha.length > 128) {
-        alert('Confira o nome, usuário, perfil e senha (mínimo de 8 caracteres).'); return;
+        || !['originador', 'pesador', 'escritorio'].includes(perfil) || senha.length < 6 || senha.length > 128) {
+        alert('Confira o nome, usuário, perfil e senha (mínimo de 6 caracteres).'); return;
     }
     cadastrando = true;
     const botao = document.getElementById('btn-cadastrar'); botao.disabled = true; botao.textContent = 'Enviando cadastro...';
@@ -104,7 +104,7 @@ document.getElementById('form-cadastro').addEventListener('submit', async e => {
         if (novoUsuario) await signOut(auth).catch(() => {});
         const erros = {
             'auth/email-already-in-use': 'Este usuário já está em uso. Se você já tem conta, entre com sua senha. Caso contrário, solicite ajuda ao escritório.',
-            'auth/weak-password': 'Escolha uma senha mais forte, com pelo menos 8 caracteres.',
+            'auth/weak-password': 'Escolha uma senha mais forte, com pelo menos 6 caracteres.',
             'auth/password-does-not-meet-requirements': 'A senha não atende aos requisitos. Use letras, números e símbolos.',
             'auth/network-request-failed': 'Falha de conexão. Confira a internet e tente novamente.',
             'permission-denied': 'Não foi possível enviar o cadastro. O escritório precisa atualizar as regras de cadastro no Firebase.'
