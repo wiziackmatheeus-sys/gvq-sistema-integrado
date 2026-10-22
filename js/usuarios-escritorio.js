@@ -37,7 +37,7 @@ function renderizarUsuarios() {
         if (p.perfil === 'pesador') {
             const select = document.createElement('select'); select.required = true; select.setAttribute('aria-label','Originador de ' + p.nome);
             select.add(new Option('Selecione o originador...', ''));
-            usuarios.filter(u => ['originador','comprador'].includes(u.perfil) && u.aprovado).forEach(u => select.add(new Option(u.nome,u.uid)));
+            usuarios.filter(u => ['originador','comprador'].includes(u.perfil) && u.aprovado && !u.trocaSenhaObrigatoria).forEach(u => select.add(new Option(u.nome,u.uid)));
             select.value = p.compradorUid || ''; const grupo = document.createElement('div'); grupo.className = 'form-group'; grupo.appendChild(select); tdVinculo.appendChild(grupo);
             const aprovar = document.createElement('button'); aprovar.type = 'button'; aprovar.className = 'btn btn-primario btn-sm';
             aprovar.textContent = ativo ? 'Atualizar vínculo' : 'Aprovar e vincular';
@@ -47,7 +47,7 @@ function renderizarUsuarios() {
                     await runTransaction(db,async t => {
                         const destino = doc(db,'usuarios',p.uid), origem = doc(db,'usuarios',select.value);
                         const [pesador, originador] = await Promise.all([t.get(destino),t.get(origem)]);
-                        if (!pesador.exists() || pesador.data().perfil !== 'pesador' || !originador.exists() || !['originador','comprador'].includes(originador.data().perfil) || originador.data().aprovado !== true) throw new Error('Pesador ou originador indisponível.');
+                        if (!pesador.exists() || pesador.data().perfil !== 'pesador' || !originador.exists() || !['originador','comprador'].includes(originador.data().perfil) || originador.data().aprovado !== true || originador.data().trocaSenhaObrigatoria) throw new Error('Pesador ou originador indisponível.');
                         t.update(destino,{ aprovado:true, compradorUid:origem.id, comprador:originador.data().nome, aprovadoPor:auth.currentUser.uid, aprovadoEm:serverTimestamp() });
                     });
                     alert('Pesador aprovado e vinculado ao originador.');
@@ -55,7 +55,27 @@ function renderizarUsuarios() {
                 finally { aprovar.disabled = false; }
             };
             acoes.appendChild(aprovar);
-        } else tdVinculo.textContent = '—';
+        } else {
+            tdVinculo.textContent = '—';
+            if (!ativo && p.uid !== auth.currentUser.uid) {
+                const aprovar = document.createElement('button'); aprovar.type = 'button'; aprovar.className = 'btn btn-primario btn-sm';
+                aprovar.textContent = 'Aprovar cadastro';
+                aprovar.onclick = async () => {
+                    if (p.perfil === 'escritorio' && !confirm('Aprovar ' + p.nome + ' como escritório? Essa pessoa poderá gerenciar usuários e compras.')) return;
+                    aprovar.disabled = true;
+                    try {
+                        await runTransaction(db, async t => {
+                            const destino = doc(db, 'usuarios', p.uid), atual = await t.get(destino);
+                            if (!atual.exists() || atual.data().perfil !== p.perfil || atual.data().aprovado !== false) throw new Error('O cadastro foi alterado. Atualize a lista.');
+                            t.update(destino, { aprovado: true, aprovadoPor: auth.currentUser.uid, aprovadoEm: serverTimestamp() });
+                        });
+                        alert('Cadastro aprovado. O usuário já pode entrar no sistema.');
+                    } catch (error) { alert('Não foi possível aprovar: ' + error.message); }
+                    finally { aprovar.disabled = false; }
+                };
+                acoes.appendChild(aprovar);
+            }
+        }
         if (p.uid !== auth.currentUser.uid) {
             const redefinir = document.createElement('button'); redefinir.type = 'button'; redefinir.className = 'btn btn-fantasma btn-sm'; redefinir.textContent = 'Redefinir senha';
             redefinir.onclick = async () => {

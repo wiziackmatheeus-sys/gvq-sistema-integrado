@@ -18,7 +18,7 @@ service cloud.firestore {
     function operacional() { return originador() || pesador() || escritorio(); }
     function originadorValido(uid) {
       let u = get(/databases/$(database)/documents/usuarios/$(uid)).data;
-      return u.perfil in ['originador', 'comprador'] && u.aprovado == true;
+      return u.perfil in ['originador', 'comprador'] && u.aprovado == true && u.get('trocaSenhaObrigatoria', false) == false;
     }
     function camposPesagem() {
       return ['estado', 'cidade', 'fazendaDestino', 'cidadeDestino', 'ufDestino',
@@ -141,14 +141,25 @@ service cloud.firestore {
     match /usuarios/{uid} {
       // Apenas o escritório lista usuários e originadores; o pesador lê só seu próprio vínculo.
       allow read: if logado() && (request.auth.uid == uid || escritorio());
-      // Perfis são criados somente pelas funções administrativas (Admin SDK).
-      allow create: if false;
-      allow update: if escritorio() && resource.data.perfil == 'pesador'
+      // Autocadastro cria apenas o próprio perfil pendente, sem privilégios ou vínculo.
+      allow create: if logado() && request.auth.uid == uid
+        && request.resource.data.keys().hasAll(['nome', 'login', 'perfil', 'aprovado', 'criadoEm'])
+        && request.resource.data.keys().hasOnly(['nome', 'login', 'perfil', 'aprovado', 'criadoEm'])
+        && request.resource.data.nome is string && request.resource.data.nome.size() >= 3 && request.resource.data.nome.size() <= 100
+        && request.resource.data.login is string && request.resource.data.login.matches('[a-z0-9][a-z0-9._-]{2,59}')
+        && request.auth.token.email == request.resource.data.login + '@gvq.com.br'
+        && request.resource.data.perfil in ['pesador', 'originador', 'escritorio']
+        && request.resource.data.aprovado == false && request.resource.data.criadoEm == request.time;
+      allow update: if escritorio() && request.auth.uid != uid
+        && resource.data.perfil in ['pesador', 'originador', 'comprador', 'escritorio']
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['aprovado', 'compradorUid', 'comprador', 'aprovadoPor', 'aprovadoEm'])
         && request.resource.data.aprovado == true && request.resource.data.aprovadoPor == request.auth.uid
         && request.resource.data.aprovadoEm == request.time
-        && originadorValido(request.resource.data.compradorUid)
-        && request.resource.data.comprador == get(/databases/$(database)/documents/usuarios/$(request.resource.data.compradorUid)).data.nome;
+        && (resource.data.perfil == 'pesador'
+          ? originadorValido(request.resource.data.compradorUid)
+            && request.resource.data.comprador == get(/databases/$(database)/documents/usuarios/$(request.resource.data.compradorUid)).data.nome
+          : resource.data.aprovado == false
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['aprovado', 'aprovadoPor', 'aprovadoEm']));
       allow delete: if false;
     }
     match /pesagens/{id} {

@@ -9,7 +9,6 @@ export async function exigirPerfil(user, perfis, sessaoValida = () => true) {
         const snap = await getDoc(doc(db, 'usuarios', user.uid));
         if (!sessaoValida()) return null;
         const perfil = snap.exists() ? snap.data() : null;
-        if (perfil?.trocaSenhaObrigatoria) { window.location.href = 'trocar-senha.html'; return null; }
         if (!perfil || !paginas[perfil.perfil] || perfil.aprovado !== true) {
             alert('Perfil não encontrado ou aguardando aprovação.');
             await signOut(auth);
@@ -22,6 +21,7 @@ export async function exigirPerfil(user, perfis, sessaoValida = () => true) {
             window.location.href = '../index.html';
             return null;
         }
+        if (perfil?.trocaSenhaObrigatoria) { window.location.href = 'trocar-senha.html'; return null; }
         const funcao = perfil.perfil === 'comprador' ? 'originador' : perfil.perfil;
         if (!perfis.includes(funcao)) {
             window.location.href = paginas[perfil.perfil];

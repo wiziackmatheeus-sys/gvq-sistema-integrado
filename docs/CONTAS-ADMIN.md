@@ -1,12 +1,15 @@
-# Contas criadas pelo escritório
+# Cadastro e aprovação de contas
 
 ## Uso
 
-O cadastro de **Pesador**, **Originador** e **Escritório** ocorre exclusivamente dentro da aba **Usuários**, por uma conta de escritório aprovada. Criar a conta já registra sua aprovação e o UID/data de quem a autorizou. Qualquer escritório aprovado pode criar outros escritórios, com as mesmas permissões. A primeira conta de escritório precisa existir e estar aprovada; as demais podem ser criadas por ela. A aba também mantém aprovação/vínculo de solicitações antigas de pesadores.
+Há dois caminhos para cadastrar **Pesador**, **Originador** e **Escritório**:
 
-A página pública contém somente o login e orienta solicitar acesso ao escritório. Os clientes não podem criar documentos em `usuarios`, nem mesmo autenticados: os perfis são gravados pelo servidor. O endpoint padrão de criação de credenciais do Firebase Auth não é desativado por estas regras; uma credencial sem perfil autorizado não acessa o sistema. Solicitações anteriores de escritório pendentes continuam sem acesso e exigem aprovação administrativa manual, sem liberação automática.
+- **Autocadastro:** a pessoa abre **Cadastrar** na tela inicial e informa nome, usuário, perfil e senha. O perfil é criado com `aprovado: false`, e a sessão é encerrada. O escritório aprova o pedido na aba **Usuários**, usando o filtro **Aguardando aprovação**. Pesadores exigem a definição do originador responsável; os demais usam **Aprovar cadastro**. Aprovar um escritório concede as mesmas permissões de gestão e pede confirmação.
+- **Cadastro direto pelo escritório:** permanece na aba **Usuários**. A criação já registra a aprovação e o UID/data de quem autorizou, mantendo senha temporária e troca obrigatória no primeiro acesso.
 
-Na criação, informar nome, usuário e perfil. O usuário é sugerido pelo nome e pode ser ajustado para evitar homônimos; não muda o login das contas existentes. Pesadores exigem um originador já aprovado e sem troca de senha pendente. A conta é criada aprovada e vinculada, com senha aleatória individual. Ao criar um novo originador, ele precisa trocar sua senha temporária antes de receber novos pesadores por este formulário.
+A primeira conta de escritório precisa existir e estar aprovada. Nenhum autocadastro libera acesso automaticamente, mesmo com perfil de escritório. As regras permitem criar apenas o próprio perfil pendente, com campos limitados e login correspondente ao Firebase Auth. Usuários pendentes não listam terceiros nem acessam compras, e não podem alterar o próprio perfil ou aprovação. A aprovação só pode ser feita por outro escritório aprovado, com autor/data registrados.
+
+No cadastro direto pelo escritório, informar nome, usuário e perfil. O usuário é sugerido pelo nome e pode ser ajustado para evitar homônimos; não muda o login das contas existentes. Pesadores exigem um originador já aprovado e sem troca de senha pendente. A conta é criada aprovada e vinculada, com senha aleatória individual. Ao criar um novo originador, ele precisa trocar sua senha temporária antes de receber novos pesadores por este formulário.
 
 A senha temporária é mostrada ao escritório após a operação para entrega à pessoa. Ela é removida da tela ao fechar o aviso, navegar ou sair, e não é salva no Firestore, auditoria ou localStorage. Se fechar antes de copiar, usar **Redefinir senha** para emitir outra; não é possível consultar a senha atual. Não há envio automático por e-mail ou mensagem.
 
@@ -24,7 +27,13 @@ Eventos de criação, redefinição e troca ficam em `auditoriaContas`, sem senh
 
 **Aprovar o PR e atualizar o GitHub Pages não publica as funções.** É necessário fazer a publicação no projeto Firebase, com uma conta autorizada. Conferir no console o plano e os requisitos de faturamento para Cloud Functions; não houve alteração de plano ou faturamento durante o desenvolvimento.
 
-1. Fazer backup dos dados e regras atuais. Esta versão exige republicar `criarConta`/`redefinirSenha` e as regras Firestore, mesmo se a versão anterior já estava instalada: a criação pública de perfis é agora negada para todos os papéis.
+1. Fazer backup dos dados e regras atuais. Para esta atualização de autocadastro, publicar as novas regras Firestore e os arquivos do app. As funções administrativas não mudaram; se já estiverem publicadas, não precisam de nova publicação:
+
+   ```sh
+   npx firebase-tools deploy --only firestore:rules --project gvq-sistema-compras
+   ```
+
+   O autocadastro e a aprovação usam Firebase Auth e Firestore, sem depender de Cloud Functions. Cadastro direto e redefinição de senha mantêm a dependência das funções administrativas. Se elas ainda não estiverem instaladas, seguir os passos abaixo.
 2. Com Node 22 e Java disponíveis, instalar dependências:
 
    ```sh
@@ -42,7 +51,7 @@ Eventos de criação, redefinição e troca ficam em `auditoriaContas`, sem senh
    `AUTH_WEB_API_KEY` é a chave pública de autenticação do projeto, com o valor padrão igual ao app atual. Confirmar o valor solicitado pelo CLI e as restrições dessa chave para a validação de senha no servidor. Não usar chave privada de conta de serviço nesse parâmetro. Depois de uma troca de projeto/chave, atualizar a configuração correspondente. O Storage precisa continuar configurado para os anexos.
 
 4. Publicar os arquivos do app pelo fluxo habitual do GitHub Pages. Se as funções ainda não estiverem publicadas, os botões de contas mostram serviço indisponível e não simulam sucesso.
-5. Testar com uma conta de teste: criar pesador vinculado → entrar → trocar senha → entrar novamente → registrar compra → redefinir senha → confirmar que o histórico continua disponível.
+5. Testar o autocadastro de cada perfil: tentar entrar antes da aprovação (deve bloquear), aprovar pelo escritório e entrar novamente. Para pesador, conferir o vínculo obrigatório. Testar também com uma conta de teste criada pelo escritório: criar pesador vinculado → entrar → trocar senha → entrar novamente → registrar compra → redefinir senha → confirmar que o histórico continua disponível.
 
 ## Busca e ordenação
 
