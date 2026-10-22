@@ -25,7 +25,10 @@
 
                 <h1 class="sr-only">GVQ — Sistema de Compras</h1>
 
-                <div class="tabs"><button type="button" class="tab active" style="grid-column: 1 / -1;" aria-current="page">Entrar</button></div>
+                <div class="tabs" aria-label="Acesso ao sistema">
+                    <button type="button" id="aba-login" class="tab active" aria-pressed="true" aria-controls="login-form">Entrar</button>
+                    <button type="button" id="aba-cadastro" class="tab" aria-pressed="false" aria-controls="cadastro-form">Cadastrar</button>
+                </div>
 
                 <div id="login-form" class="form-content active">
                     <form id="form-login" class="auth-form">
@@ -47,6 +50,39 @@
                     </form>
                 </div>
 
+                <div id="cadastro-form" class="form-content">
+                    <form id="form-cadastro" class="auth-form">
+                        <div class="form-group">
+                            <label for="cadastro_nome">Nome completo</label>
+                            <input id="cadastro_nome" required minlength="3" maxlength="100" autocomplete="name">
+                        </div>
+                        <div class="form-group">
+                            <label for="cadastro_usuario">Usuário</label>
+                            <input id="cadastro_usuario" required minlength="3" maxlength="60" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,59}" autocomplete="username" autocapitalize="none" spellcheck="false" aria-describedby="dica-usuario">
+                            <small id="dica-usuario">Use letras sem acento, números, ponto, hífen ou sublinhado.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="cadastro_perfil">Perfil</label>
+                            <select id="cadastro_perfil" required>
+                                <option value="">Selecione...</option>
+                                <option value="escritorio">Escritório</option>
+                                <option value="originador">Originador (comprador)</option>
+                                <option value="pesador">Pesador</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="cadastro_senha">Senha</label>
+                            <input type="password" id="cadastro_senha" required minlength="8" maxlength="128" autocomplete="new-password">
+                        </div>
+                        <div class="form-group">
+                            <label for="cadastro_confirmacao">Confirme a senha</label>
+                            <input type="password" id="cadastro_confirmacao" required minlength="8" maxlength="128" autocomplete="new-password">
+                        </div>
+                        <p class="user-hint">Seu cadastro será analisado pelo escritório. O acesso será liberado após a aprovação, para todos os perfis.</p>
+                        <button type="submit" id="btn-cadastrar" class="btn btn-primario btn-lg btn-bloco">Solicitar cadastro</button>
+                    </form>
+                </div>
+                <p id="mensagem-acesso" role="status" aria-live="polite" hidden></p>
             </div>
         </section>
     </main>

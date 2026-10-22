@@ -41,13 +41,46 @@ function complemento(d, extras = {}, incluirFinanceiro = true) {
     if (incluirFinanceiro) b.update(doc(d, 'romaneios', 'p1'), { status: 'aguardando_revalidacao', revalidacaoSolicitadaEm: serverTimestamp() });
     return b.commit();
 }
-test('cadastro público de perfis é bloqueado para todos os papéis, inclusive por cliente autenticado', async () => {
-    for (const perfil of ['pesador','originador','comprador','escritorio']) {
-        await assertFails(setDoc(doc(db('new-' + perfil),'usuarios','new-' + perfil),user('Novo',perfil,false)));
-        await assertFails(setDoc(doc(db('new-' + perfil),'usuarios','new-' + perfil),user('Novo',perfil,true)));
+test('autocadastro permite somente o próprio perfil pendente com login correspondente ao Auth', async () => {
+    for (const perfil of ['pesador','originador','escritorio']) {
+        const uid = 'new-' + perfil;
+        const d = env.authenticatedContext(uid, { email: `${uid}@gvq.com.br` }).firestore();
+        const dados = { nome: 'Novo Usuário', login: uid, perfil, aprovado: false, criadoEm: serverTimestamp() };
+        await assertFails(setDoc(doc(d, 'usuarios', uid), { ...dados, aprovado: true }));
+        await assertFails(setDoc(doc(d, 'usuarios', uid), { ...dados, compradorUid: 'buyer1' }));
+        await assertFails(setDoc(doc(d, 'usuarios', uid), { ...dados, aprovadoPor: 'office1' }));
+        await assertFails(setDoc(doc(d, 'usuarios', uid), { ...dados, trocaSenhaObrigatoria: false }));
+        await assertFails(setDoc(doc(d, 'usuarios', uid), { ...dados, login: 'outra.pessoa' }));
+        await assertFails(setDoc(doc(d, 'usuarios', 'outra-pessoa'), dados));
+        await assertSucceeds(setDoc(doc(d, 'usuarios', uid), dados));
+        await assertFails(updateDoc(doc(d, 'usuarios', uid), { aprovado: true }));
+        await assertFails(updateDoc(doc(d, 'usuarios', uid), { perfil: 'escritorio' }));
+        await assertFails(getDocs(collection(d, 'usuarios')));
+        await assertFails(getDoc(doc(d, 'romaneios', 'legacy')));
+        await assertFails(getDoc(doc(d, 'pesagens', 'p1')));
+        await assertFails(updateDoc(doc(d, 'usuarios', 'waiting'), { aprovado: true }));
     }
+    const anonimo = env.unauthenticatedContext().firestore();
+    await assertFails(setDoc(doc(anonimo, 'usuarios', 'anonimo'), { nome: 'Anonimo', login: 'anonimo', perfil: 'escritorio', aprovado: false, criadoEm: serverTimestamp() }));
     await assertFails(updateDoc(doc(db('waiting'),'usuarios','waiting'),{aprovado:true,compradorUid:'buyer1'}));
     await assertFails(setDoc(doc(db('office1'),'usuarios','novo-office'),user('Novo','escritorio',true)));
+});
+test('escritório aprovado aprova todos os perfis; pendentes não aprovam a si mesmos ou terceiros', async () => {
+    const alteracao = { aprovado: true, aprovadoPor: 'office1', aprovadoEm: serverTimestamp() };
+    for (const perfil of ['originador', 'comprador', 'escritorio']) {
+        const uid = 'pending-' + perfil;
+        await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), 'usuarios', uid), user('Pendente', perfil, false)));
+        await assertFails(updateDoc(doc(db(uid), 'usuarios', uid), { ...alteracao, aprovadoPor: uid }));
+        await assertFails(updateDoc(doc(db('pendingOffice'), 'usuarios', uid), { ...alteracao, aprovadoPor: 'pendingOffice' }));
+        await assertFails(updateDoc(doc(db('buyer1'), 'usuarios', uid), { ...alteracao, aprovadoPor: 'buyer1' }));
+        await assertFails(updateDoc(doc(db('office1'), 'usuarios', uid), { ...alteracao, perfil: 'pesador' }));
+        await assertFails(updateDoc(doc(db('office1'), 'usuarios', uid), { ...alteracao, compradorUid: 'buyer1' }));
+        await assertFails(updateDoc(doc(db('office1'), 'usuarios', uid), { ...alteracao, aprovadoPor: uid }));
+        await assertSucceeds(updateDoc(doc(db('office1'), 'usuarios', uid), alteracao));
+        if (perfil === 'escritorio') await assertSucceeds(getDocs(collection(db(uid), 'usuarios')));
+    }
+    await assertFails(updateDoc(doc(db('office1'), 'usuarios', 'office1'), alteracao));
+    await assertFails(updateDoc(doc(db('office1'), 'usuarios', 'waiting'), alteracao));
 });
 test('somente escritório aprovado pode vincular e aprovar um pesador', async () => {
     const alteracao = { aprovado: true, compradorUid: 'buyer1', comprador: 'Ana', aprovadoPor: 'office1', aprovadoEm: serverTimestamp() };
