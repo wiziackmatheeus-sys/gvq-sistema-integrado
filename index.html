@@ -58,25 +58,21 @@
                         </div>
                         <div class="form-group">
                             <label for="cadastro_usuario">Usuário</label>
-                            <input id="cadastro_usuario" required minlength="3" maxlength="60" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,59}" autocomplete="username" autocapitalize="none" spellcheck="false" aria-describedby="dica-usuario">
-                            <small id="dica-usuario">Use letras sem acento, números, ponto, hífen ou sublinhado.</small>
+                            <input id="cadastro_usuario" readonly autocomplete="username" placeholder="primeironome.ultimonome" aria-describedby="dica-usuario">
+                            <small id="dica-usuario">Gerado automaticamente: primeiro nome e último sobrenome, sem acentos.</small>
                         </div>
                         <div class="form-group">
                             <label for="cadastro_perfil">Perfil</label>
                             <select id="cadastro_perfil" required>
                                 <option value="">Selecione...</option>
                                 <option value="escritorio">Escritório</option>
-                                <option value="originador">Originador (comprador)</option>
+                                <option value="originador">Originador</option>
                                 <option value="pesador">Pesador</option>
                             </select>
                         </div>
                         <div class="form-group">
                             <label for="cadastro_senha">Senha</label>
                             <input type="password" id="cadastro_senha" required minlength="8" maxlength="128" autocomplete="new-password">
-                        </div>
-                        <div class="form-group">
-                            <label for="cadastro_confirmacao">Confirme a senha</label>
-                            <input type="password" id="cadastro_confirmacao" required minlength="8" maxlength="128" autocomplete="new-password">
                         </div>
                         <p class="user-hint">Seu cadastro será analisado pelo escritório. O acesso será liberado após a aprovação, para todos os perfis.</p>
                         <button type="submit" id="btn-cadastrar" class="btn btn-primario btn-lg btn-bloco">Solicitar cadastro</button>

@@ -94,11 +94,15 @@ function renderizarUsuarios() {
 elemento('ocultar-credenciais').onclick = limparCredenciais;
 function ajustarPerfil() { const pesador = elemento('conta-perfil').value === 'pesador'; elemento('grupo-conta-originador').hidden = !pesador; elemento('grupo-conta-originador').style.display = pesador ? '' : 'none'; elemento('conta-originador').required = pesador; }
 elemento('conta-perfil').onchange = ajustarPerfil;
-elemento('conta-nome').addEventListener('blur',() => { if (!elemento('conta-login').value) elemento('conta-login').value = sugerirLogin(elemento('conta-nome').value); });
+elemento('conta-nome').addEventListener('input',() => { elemento('conta-login').value = sugerirLogin(elemento('conta-nome').value); });
 elemento('form-criar-conta').addEventListener('submit',async e => {
-    e.preventDefault(); const botao = elemento('btn-criar-conta'); botao.disabled = true; limparCredenciais();
+    e.preventDefault();
+    const login = sugerirLogin(elemento('conta-nome').value);
+    elemento('conta-login').value = login;
+    if (!login) { alert('Informe o nome e o sobrenome completos para gerar o usuário (até 60 caracteres).'); return; }
+    const botao = elemento('btn-criar-conta'); botao.disabled = true; limparCredenciais();
     try {
-        const dados = await chamarConta('criarConta',{ nome:elemento('conta-nome').value, login:elemento('conta-login').value, perfil:elemento('conta-perfil').value, compradorUid:elemento('conta-originador').value });
+        const dados = await chamarConta('criarConta',{ nome:elemento('conta-nome').value, login, perfil:elemento('conta-perfil').value, compradorUid:elemento('conta-originador').value });
         e.target.reset(); ajustarPerfil(); mostrarCredenciais(dados);
     } catch (error) { alert('Não foi possível criar: ' + error.message); }
     finally { botao.disabled = false; }

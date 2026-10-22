@@ -148,3 +148,13 @@ test('demonstração ativa registra múltiplos nomes e categorias sem conteúdo 
     assert.ok(registros.every(a => a.caminho.startsWith('demonstracao/') && !('urlDownload' in a) && !('arquivo' in a)));
     assert.deepEqual(registrarAnexosTexto([], {uid:'pesador',pesagemId:'p1'}), []);
 });
+
+test('usuário automático usa primeiro e último nome, sem acentos, e exige sobrenome', () => {
+    assert.equal(sugerirLogin(' Matheus Henrique Wiziack '), 'matheus.wiziack');
+    assert.equal(sugerirLogin(' MARIA   da Conceição '), 'maria.conceicao');
+    assert.equal(sugerirLogin('João'), '');
+    assert.equal(sugerirLogin('   '), '');
+    assert.equal(sugerirLogin('Ana ' + 's'.repeat(60)), '');
+    assert.equal(sugerirLogin('Ana Maria'), 'ana.maria');
+    assert.equal(sugerirLogin('Ana Souza'), 'ana.souza');
+});

@@ -3,7 +3,9 @@ export const normalizarTexto = valor => String(valor || '').normalize('NFD').rep
 export const compararNomes = (a,b) => String(a || '').localeCompare(String(b || ''),'pt-BR',{ sensitivity: 'base', numeric: true });
 export function sugerirLogin(nome) {
     const partes = normalizarTexto(nome).replace(/[^a-z0-9 ]/g,'').split(/\s+/).filter(Boolean);
-    return partes.length ? `${partes[0]}.${partes.at(-1)}`.slice(0,60) : '';
+    if (partes.length < 2) return '';
+    const login = `${partes[0]}.${partes.at(-1)}`;
+    return login.length <= 60 ? login : '';
 }
 export function buscarCompras(lista, { texto = '', data = '', mes = '', status = '', tipo = '' } = {}) {
     const termos = normalizarTexto(texto).split(/\s+/).filter(Boolean);
