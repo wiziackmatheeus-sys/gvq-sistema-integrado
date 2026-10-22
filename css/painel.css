@@ -215,6 +215,7 @@
    -------------------------------------------------------------------------- */
 /* Cabeçalho do card com os filtros à direita (o card usa .card-tabela do base.css) */
 .card-tabela > .historico-barra { align-items: flex-end; gap: 16px 24px; }
+.historico-barra > .form-grid { align-items: end; }
 .filtros { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
 .filtros .form-group { width: 188px; }
 .tabela-historico { min-width: 600px; }
