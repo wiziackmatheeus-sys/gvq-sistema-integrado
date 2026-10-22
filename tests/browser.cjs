@@ -43,6 +43,7 @@ export async function runTransaction(db,callback){
 }
 export async function signInWithEmailAndPassword(){return {user:{uid:h().uid}}}
 export async function createUserWithEmailAndPassword(){return {user:{uid:h().uid}}}
+export async function deleteUser(){}
 export function ref(storage,path){return {path}}
 export async function uploadBytes(ref,file){if(h().failUpload)throw new Error('Storage indisponível');h().uploads.push({path:ref.path,name:file.name,size:file.size})}
 export function uploadBytesResumable(ref,file){
@@ -129,11 +130,17 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  for(const errs of [demoErrors,demoBuyerErrors,demoComplementErrors,demoRevalidateErrors,demoOfficeErrors])assert.deepEqual(errs,[]);
  for(const p of [demo,demoBuyer,demoComplement,demoRevalidate,demoOffice])await p.close();
  console.log('PASS: demonstração registra nomes, complementa, revalida e exibe no escritório sem Storage.');
- // A página pública permite apenas entrar; contas anteriores pendentes continuam bloqueadas.
+ // Cadastro usa usuário automático e uma única senha; contas pendentes continuam bloqueadas.
  const {page:signup,errors:se}=await pageFor('new-user','index.html');
- assert.equal(await signup.getByText('Para obter acesso, solicite seu cadastro ao escritório.',{exact:true}).count(),0);assert.equal(await signup.locator('#form-cadastro').count(),0);assert.equal(await signup.getByRole('button',{name:'Nova conta',exact:true}).count(),0);assert.deepEqual(se,[]);
+ assert.equal(await signup.getByText('Para obter acesso, solicite seu cadastro ao escritório.',{exact:true}).count(),0);assert.equal(await signup.locator('#form-cadastro').count(),1);assert.equal(await signup.getByRole('button',{name:'Nova conta',exact:true}).count(),0);assert.deepEqual(se,[]);
+ await signup.locator('#aba-cadastro').click();
+ await signup.locator('#cadastro_nome').fill('Matheus Henrique Wiziack');
+ assert.equal(await signup.locator('#cadastro_usuario').inputValue(),'matheus.wiziack');
+ assert.equal(await signup.locator('#cadastro_usuario').getAttribute('readonly'),'');
+ assert.equal(await signup.locator('#cadastro_confirmacao').count(),0);
+ assert.equal(await signup.locator('#cadastro_perfil option[value="originador"]').innerText(),'Originador');
  const {page:waiting}=await pageFor('waiting','pages/pesador.html');await waiting.waitForURL('**/index.html');
- console.log('PASS: cadastro público removido; contas pendentes anteriores permanecem bloqueadas.');
+ console.log('PASS: cadastro com usuário automático, sem confirmação de senha; contas pendentes continuam bloqueadas.');
  // Escritório aprova e vincula, com compatibilidade para contas antigas de comprador.
  const {page:office,errors:oe}=await pageFor('office1','pages/escritorio.html');
  await office.locator('#btn-tab-usuarios').click();const row=office.locator('#tbody-usuarios tr').filter({hasText:'Pedro Pesador'});
@@ -158,10 +165,10 @@ function seed(uid,data){return {uid,reads:[],writes:[],uploads:[],deleted:[],dat
  const {page:accountsFail,alerts:accountAlerts}=await pageFor('office1','pages/escritorio.html');await accountsFail.locator('#btn-tab-usuarios').click();await accountsFail.evaluate(()=>window.__mock.failFunction=true);
  await accountsFail.locator('#tbody-usuarios tr').filter({hasText:'Paulo Pesador'}).getByRole('button',{name:'Redefinir senha',exact:true}).click();
  assert.ok(accountAlerts.some(a=>a.includes('publicação das funções')));assert.equal(await accountsFail.locator('#resultado-conta').isVisible(),false);await accountsFail.close();
- // Escritório está disponível somente na criação interna e dispensa vínculo ao originador.
+ // Criação interna de escritório dispensa vínculo ao originador.
  await office.locator('#btn-tab-usuarios').click();await office.locator('#conta-perfil').selectOption('escritorio');
  assert.equal(await office.locator('#grupo-conta-originador').isVisible(),false);
- await office.locator('#conta-nome').fill('Novo Escritório');await office.locator('#conta-login').fill('novo.escritorio');await office.locator('#btn-criar-conta').click();
+ await office.locator('#conta-nome').fill('Novo Escritório');await office.locator('#btn-criar-conta').click();
  assert.equal(await office.evaluate(()=>window.__mock.chamadas.at(-1).dados.perfil),'escritorio');
  await office.locator('#filtro-perfil-usuarios').selectOption('escritorio');await office.locator('#busca-usuarios').fill('');
  assert.ok((await office.locator('#tbody-usuarios').innerText()).includes('Olivia Escritório'));
